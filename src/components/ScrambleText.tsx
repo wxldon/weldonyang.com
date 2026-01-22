@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
-const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 interface ScrambleTextProps {
   text: string;
@@ -11,9 +11,11 @@ interface ScrambleTextProps {
   onComplete?: () => void;
 }
 
+const preserveChars = [" ", "[", "]"];
+
 export default function ScrambleText({ text, className, onComplete }: ScrambleTextProps) {
   const [displayText, setDisplayText] = useState(
-    text.split("").map((char) => (char === " " ? " " : characters[Math.floor(Math.random() * characters.length)])).join("")
+    text.split("").map((char) => (preserveChars.includes(char) ? char : characters[Math.floor(Math.random() * characters.length)])).join("")
   );
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export default function ScrambleText({ text, className, onComplete }: ScrambleTe
         text
           .split("")
           .map((char, index) => {
-            if (char === " ") return " ";
+            if (preserveChars.includes(char)) return char;
             if (index < iteration / 3) {
               return text[index];
             }

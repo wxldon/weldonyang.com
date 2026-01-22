@@ -50,7 +50,7 @@ export default function Home() {
           }}
         >
           <ScrambleText
-            text="Weldon Yang"
+            text="[WELDON YANG]"
             onComplete={handleScrambleComplete}
           />
         </motion.h1>
