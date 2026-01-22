@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
 
 const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 interface ScrambleTextProps {
   text: string;
   className?: string;
+  onComplete?: () => void;
 }
 
-export default function ScrambleText({ text, className }: ScrambleTextProps) {
-  const [displayText, setDisplayText] = useState(text);
-  const [isHovering, setIsHovering] = useState(false);
+export default function ScrambleText({ text, className, onComplete }: ScrambleTextProps) {
+  const [displayText, setDisplayText] = useState(
+    text.split("").map((char) => (char === " " ? " " : characters[Math.floor(Math.random() * characters.length)])).join("")
+  );
 
   useEffect(() => {
+    const duration = 2000; // 2 seconds total
+    const intervalTime = duration / (text.length * 3);
     let iteration = 0;
     const totalIterations = text.length * 3;
 
@@ -36,47 +41,15 @@ export default function ScrambleText({ text, className }: ScrambleTextProps) {
       if (iteration > totalIterations) {
         clearInterval(interval);
         setDisplayText(text);
+        onComplete?.();
       }
-    }, 40);
+    }, intervalTime);
 
     return () => clearInterval(interval);
-  }, [text]);
-
-  const handleMouseEnter = () => {
-    setIsHovering(true);
-    let iteration = 0;
-    const totalIterations = text.length * 2;
-
-    const interval = setInterval(() => {
-      setDisplayText(
-        text
-          .split("")
-          .map((char, index) => {
-            if (char === " ") return " ";
-            if (index < iteration / 2) {
-              return text[index];
-            }
-            return characters[Math.floor(Math.random() * characters.length)];
-          })
-          .join("")
-      );
-
-      iteration += 1;
-
-      if (iteration > totalIterations) {
-        clearInterval(interval);
-        setDisplayText(text);
-        setIsHovering(false);
-      }
-    }, 30);
-  };
+  }, [text, onComplete]);
 
   return (
-    <span
-      className={className}
-      onMouseEnter={handleMouseEnter}
-      style={{ cursor: "default" }}
-    >
+    <span className={className}>
       {displayText}
     </span>
   );
