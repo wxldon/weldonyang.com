@@ -6,8 +6,6 @@ import ScrambleText from "@/components/ScrambleText";
 import GradientCursor from "@/components/GradientCursor";
 import LiveAge from "@/components/LiveAge";
 
-import CoffeeCup from "@/components/CoffeeCup";
-
 export default function Home() {
   const [animationPhase, setAnimationPhase] = useState<"scramble" | "move" | "complete">("scramble");
 
@@ -68,7 +66,6 @@ export default function Home() {
         </motion.h1>
         <LiveAge show={animationPhase === "complete"} />
       </motion.div>
-      {animationPhase === "complete" && <CoffeeCup />}
     </main>
   );
 }
