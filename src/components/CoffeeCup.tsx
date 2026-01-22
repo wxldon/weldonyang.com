@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { motion, useAnimation, PanInfo, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { motion, useAnimation, PanInfo, useMotionValue, useSpring } from "framer-motion";
 
 interface SpillDrop {
   id: number;
@@ -9,7 +9,6 @@ interface SpillDrop {
   y: number;
   size: number;
   velocityX: number;
-  velocityY: number;
 }
 
 export default function CoffeeCup() {
@@ -17,86 +16,84 @@ export default function CoffeeCup() {
   const [coffeeLevel, setCoffeeLevel] = useState(100);
   const [hasFallen, setHasFallen] = useState(false);
   const [spillDrops, setSpillDrops] = useState<SpillDrop[]>([]);
+  const [spillStream, setSpillStream] = useState<{ active: boolean; side: "left" | "right" }>({
+    active: false,
+    side: "right",
+  });
 
   // Physics-based tilt using spring
   const tiltValue = useMotionValue(0);
   const smoothTilt = useSpring(tiltValue, { stiffness: 150, damping: 12, mass: 0.5 });
-
-  // Coffee surface angle - opposite to cup tilt (liquid stays level)
-  const coffeeSurfaceAngle = useTransform(smoothTilt, (tilt) => -tilt * 0.8);
-
-  // Coffee offset - liquid shifts to the lower side
-  const coffeeOffset = useTransform(smoothTilt, (tilt) => tilt * 0.4);
+  const coffeeSkew = useSpring(tiltValue, { stiffness: 100, damping: 8 });
 
   const controls = useAnimation();
   const cupRef = useRef<HTMLDivElement>(null);
   const dropId = useRef(0);
+  const spillInterval = useRef<NodeJS.Timeout | null>(null);
   const lastVelocity = useRef(0);
+  const lastPosition = useRef({ x: 0, y: 0 });
   const lastTime = useRef(Date.now());
 
-  const createSpillDrop = useCallback((cupRect: DOMRect, tiltAngle: number) => {
-    if (coffeeLevel <= 0) return;
+  const createSpillDrop = useCallback((tiltDirection: "left" | "right", intensity: number = 1) => {
+    if (!cupRef.current || coffeeLevel <= 0) return;
 
-    // Determine which side is lower (where coffee spills from)
-    const spillsRight = tiltAngle > 0;
-    const tiltRad = (Math.abs(tiltAngle) * Math.PI) / 180;
-
-    // Calculate spill point at the rim of the cup
-    const cupCenterX = cupRect.left + cupRect.width / 2;
-    const cupTop = cupRect.top;
-    const rimOffset = (cupRect.width / 2) * Math.cos(tiltRad);
-
-    const dropX = spillsRight ? cupCenterX + rimOffset - 5 : cupCenterX - rimOffset + 5;
-    const dropY = cupTop + 5;
-
-    // Initial velocity based on tilt angle
-    const speed = 2 + Math.abs(tiltAngle) * 0.1;
-    const velocityX = spillsRight ? speed + Math.random() * 2 : -speed - Math.random() * 2;
-    const velocityY = 1 + Math.random() * 2;
+    const rect = cupRef.current.getBoundingClientRect();
+    const dropX = tiltDirection === "right" ? rect.right - 15 : rect.left + 15;
+    const dropY = rect.top + 15;
 
     setSpillDrops((prev) => [
-      ...prev.slice(-30),
+      ...prev.slice(-25),
       {
         id: dropId.current++,
         x: dropX,
         y: dropY,
-        size: 5 + Math.random() * 5,
-        velocityX,
-        velocityY,
+        size: (4 + Math.random() * 6) * intensity,
+        velocityX: tiltDirection === "right"
+          ? (2 + Math.random() * 4) * intensity
+          : (-2 - Math.random() * 4) * intensity,
       },
     ]);
-
-    setCoffeeLevel((prev) => Math.max(0, prev - 0.6));
   }, [coffeeLevel]);
 
-  // Check for spilling based on tilt
+  // Monitor tilt for spilling
   useEffect(() => {
-    let spillTimer: NodeJS.Timeout | null = null;
-
-    const unsubscribe = smoothTilt.on("change", (tilt) => {
-      const spillThreshold = 35;
-
-      if (Math.abs(tilt) > spillThreshold && coffeeLevel > 0 && isDragging && cupRef.current) {
-        if (!spillTimer) {
-          spillTimer = setInterval(() => {
-            if (cupRef.current) {
-              createSpillDrop(cupRef.current.getBoundingClientRect(), smoothTilt.get());
-            }
-          }, 50);
-        }
-      } else {
-        if (spillTimer) {
-          clearInterval(spillTimer);
-          spillTimer = null;
-        }
+    const unsubscribe = smoothTilt.on("change", (latest) => {
+      const spillThreshold = 30;
+      if (Math.abs(latest) > spillThreshold && coffeeLevel > 0 && isDragging) {
+        setSpillStream({
+          active: true,
+          side: latest > 0 ? "right" : "left",
+        });
+      } else if (!isDragging || Math.abs(latest) < spillThreshold - 10) {
+        setSpillStream({ active: false, side: "right" });
       }
     });
+    return () => unsubscribe();
+  }, [smoothTilt, coffeeLevel, isDragging]);
+
+  // Handle continuous spilling when tilted
+  useEffect(() => {
+    if (spillStream.active && coffeeLevel > 0) {
+      const currentTilt = Math.abs(smoothTilt.get());
+      const spillRate = Math.min(2, (currentTilt - 25) / 20); // More tilt = faster spill
+
+      spillInterval.current = setInterval(() => {
+        createSpillDrop(spillStream.side, spillRate);
+        setCoffeeLevel((prev) => Math.max(0, prev - spillRate * 0.5));
+      }, 40);
+    } else {
+      if (spillInterval.current) {
+        clearInterval(spillInterval.current);
+        spillInterval.current = null;
+      }
+    }
 
     return () => {
-      unsubscribe();
-      if (spillTimer) clearInterval(spillTimer);
+      if (spillInterval.current) {
+        clearInterval(spillInterval.current);
+      }
     };
-  }, [smoothTilt, coffeeLevel, isDragging, createSpillDrop]);
+  }, [spillStream.active, spillStream.side, createSpillDrop, coffeeLevel, smoothTilt]);
 
   const handleDragStart = () => {
     setIsDragging(true);
@@ -107,24 +104,32 @@ export default function CoffeeCup() {
     const now = Date.now();
     const deltaTime = Math.max(1, now - lastTime.current);
 
+    // Calculate acceleration (change in velocity over time)
     const currentVelocityX = info.velocity.x;
     const acceleration = (currentVelocityX - lastVelocity.current) / deltaTime * 10;
 
-    // Inertia-based tilt
-    const velocityTilt = -currentVelocityX * 0.018;
-    const accelerationTilt = -acceleration * 0.6;
+    // Calculate position-based tilt (cup tilts opposite to movement direction due to inertia)
+    const velocityTilt = -currentVelocityX * 0.015;
 
+    // Calculate acceleration-based tilt (sudden movements cause more tilt)
+    const accelerationTilt = -acceleration * 0.8;
+
+    // Combine tilts with limits
     let totalTilt = velocityTilt + accelerationTilt;
-    totalTilt = Math.max(-75, Math.min(75, totalTilt));
+    totalTilt = Math.max(-70, Math.min(70, totalTilt));
 
     tiltValue.set(totalTilt);
 
     lastVelocity.current = currentVelocityX;
+    lastPosition.current = { x: info.point.x, y: info.point.y };
     lastTime.current = now;
   };
 
   const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
     setIsDragging(false);
+    setSpillStream({ active: false, side: "right" });
+
+    // Let the tilt naturally settle back to 0
     tiltValue.set(0);
 
     const cupElement = cupRef.current;
@@ -134,51 +139,33 @@ export default function CoffeeCup() {
     const cupCenterX = rect.left + rect.width / 2;
     const cupCenterY = rect.top + rect.height / 2;
 
+    // Check if in home zone (top right corner)
     const isInHomeZone = cupCenterX > window.innerWidth - 150 && cupCenterY < 150;
 
     if (isInHomeZone) {
       controls.start({ x: 0, y: 0, rotate: 0 });
     } else {
       setHasFallen(true);
-
       // Spill remaining coffee as it falls
-      const spillDirection = info.velocity.x > 0 ? 1 : -1;
-      const remainingDrops = Math.floor(coffeeLevel / 4);
-
+      const remainingDrops = Math.floor(coffeeLevel / 5);
       for (let i = 0; i < remainingDrops; i++) {
         setTimeout(() => {
-          if (cupRef.current) {
-            const fallRect = cupRef.current.getBoundingClientRect();
-            setSpillDrops((prev) => [
-              ...prev.slice(-30),
-              {
-                id: dropId.current++,
-                x: fallRect.left + fallRect.width / 2 + (Math.random() - 0.5) * 20,
-                y: fallRect.top + Math.random() * 10,
-                size: 4 + Math.random() * 6,
-                velocityX: spillDirection * (3 + Math.random() * 4),
-                velocityY: -2 + Math.random() * 4,
-              },
-            ]);
-          }
-        }, i * 25);
+          createSpillDrop(info.velocity.x > 0 ? "right" : "left", 1.2);
+        }, i * 30);
       }
 
       controls.start({
         y: window.innerHeight + 200,
-        rotate: info.velocity.x > 0 ? 200 : -200,
-        transition: { duration: 1, ease: "easeIn" },
+        rotate: info.velocity.x > 0 ? 180 : -180,
+        transition: { duration: 0.8, ease: "easeIn" },
       });
     }
   };
 
-  // Clean up old drops
+  // Clean up old spill drops
   useEffect(() => {
     const cleanup = setInterval(() => {
-      setSpillDrops((prev) => {
-        const now = Date.now();
-        return prev.filter((drop) => now - drop.id < 3000);
-      });
+      setSpillDrops((prev) => prev.filter((drop) => Date.now() - drop.id < 2000));
     }, 500);
     return () => clearInterval(cleanup);
   }, []);
@@ -204,38 +191,56 @@ export default function CoffeeCup() {
 
   return (
     <>
-      {/* Realistic falling coffee drops */}
+      {/* Spill drops with physics */}
       {spillDrops.map((drop) => (
         <motion.div
           key={drop.id}
           className="fixed rounded-full pointer-events-none z-40"
           style={{
+            left: drop.x,
+            top: drop.y,
             width: drop.size,
             height: drop.size,
-            backgroundColor: "rgba(101, 67, 33, 0.9)",
-            boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+            backgroundColor: "rgba(101, 67, 33, 0.85)",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
           }}
-          initial={{
-            x: drop.x,
-            y: drop.y,
-            scale: 1,
-            opacity: 1,
-          }}
+          initial={{ scale: 1, y: 0, x: 0, opacity: 1 }}
           animate={{
-            x: drop.x + drop.velocityX * 80,
-            y: drop.y + window.innerHeight,
-            scale: [1, 1.1, 0.8, 0.4],
-            opacity: [1, 1, 0.9, 0],
+            y: [0, 80, 250, 500],
+            x: [0, drop.velocityX * 15, drop.velocityX * 25, drop.velocityX * 30],
+            scale: [1, 0.9, 0.7, 0.3],
+            opacity: [1, 1, 0.8, 0],
           }}
           transition={{
-            duration: 1.5,
-            ease: [0.215, 0.61, 0.355, 1],
-            y: { duration: 1.5, ease: [0.55, 0.055, 0.675, 0.19] }, // Gravity curve
-            scale: { duration: 1.5, times: [0, 0.2, 0.6, 1] },
-            opacity: { duration: 1.5, times: [0, 0.5, 0.8, 1] },
+            duration: 1,
+            ease: [0.25, 0.46, 0.45, 0.94],
+            times: [0, 0.25, 0.55, 1],
           }}
         />
       ))}
+
+      {/* Spill stream when pouring */}
+      {spillStream.active && coffeeLevel > 0 && cupRef.current && (
+        <motion.div
+          className="fixed pointer-events-none z-40"
+          style={{
+            left: spillStream.side === "right"
+              ? cupRef.current.getBoundingClientRect().right - 12
+              : cupRef.current.getBoundingClientRect().left + 6,
+            top: cupRef.current.getBoundingClientRect().top + 10,
+            width: 6,
+            height: 35,
+            background: "linear-gradient(to bottom, rgba(101, 67, 33, 0.9), rgba(101, 67, 33, 0.2))",
+            borderRadius: "0 0 4px 4px",
+            transformOrigin: "top center",
+            transform: `rotate(${spillStream.side === "right" ? 20 : -20}deg)`,
+          }}
+          initial={{ scaleY: 0, opacity: 0 }}
+          animate={{ scaleY: 1, opacity: 1 }}
+          exit={{ scaleY: 0, opacity: 0 }}
+          transition={{ duration: 0.1 }}
+        />
+      )}
 
       {/* Coffee cup */}
       <motion.div
@@ -262,49 +267,32 @@ export default function CoffeeCup() {
               backdropFilter: "blur(8px)",
             }}
           >
-            {/* Coffee liquid container */}
-            <div
-              className="absolute bottom-0 left-0 right-0 overflow-hidden"
-              style={{ height: `${coffeeLevel}%` }}
-            >
-              {/* Coffee liquid that shifts based on tilt */}
+            {/* Coffee liquid */}
+            <div className="absolute bottom-0 left-0 right-0 overflow-hidden" style={{ height: `${coffeeLevel}%` }}>
               <motion.div
-                className="absolute inset-0"
+                className="absolute bottom-0 left-0 right-0 h-full"
                 style={{
-                  background: "linear-gradient(to bottom, rgba(139, 90, 43, 0.85), rgba(80, 50, 25, 0.95))",
-                  x: coffeeOffset,
+                  background: "linear-gradient(to bottom, rgba(139, 90, 43, 0.8), rgba(101, 67, 33, 0.9))",
+                  transformOrigin: "bottom center",
                 }}
               />
-
-              {/* Coffee surface that stays level (tilts opposite to cup) */}
+              {/* Coffee surface - reacts to tilt */}
               <motion.div
-                className="absolute top-0 left-[-20%] right-[-20%] h-4"
+                className="absolute top-0 left-0 right-0 h-3"
                 style={{
-                  background: "linear-gradient(to bottom, rgba(160, 100, 50, 0.95) 0%, rgba(139, 90, 43, 0.9) 50%, transparent 100%)",
-                  rotate: coffeeSurfaceAngle,
+                  background: "linear-gradient(to bottom, rgba(180, 120, 60, 0.9), rgba(139, 90, 43, 0.8))",
                   transformOrigin: "center center",
-                  x: coffeeOffset,
+                  skewX: coffeeSkew,
                 }}
               />
-
-              {/* Surface highlight/reflection */}
+              {/* Surface shine */}
               <motion.div
-                className="absolute top-0 left-[-10%] right-[-10%] h-1"
+                className="absolute top-0 left-0 right-0 h-1"
                 style={{
-                  background: "linear-gradient(90deg, transparent 20%, rgba(255,255,255,0.3) 50%, transparent 80%)",
-                  rotate: coffeeSurfaceAngle,
-                  x: coffeeOffset,
+                  background: "linear-gradient(to bottom, rgba(255,255,255,0.4), transparent)",
                 }}
               />
             </div>
-
-            {/* Cup rim highlight */}
-            <div
-              className="absolute top-0 left-0 right-0 h-1 rounded-t"
-              style={{
-                background: "linear-gradient(to bottom, rgba(255,255,255,0.3), transparent)",
-              }}
-            />
           </div>
 
           {/* Cup handle */}
@@ -321,12 +309,6 @@ export default function CoffeeCup() {
           {coffeeLevel < 100 && coffeeLevel > 0 && (
             <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-xs opacity-50 font-mono">
               {Math.round(coffeeLevel)}%
-            </div>
-          )}
-
-          {coffeeLevel <= 0 && (
-            <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-xs opacity-50">
-              empty
             </div>
           )}
         </motion.div>
