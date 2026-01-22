@@ -2,22 +2,14 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, ContactShadows } from "@react-three/drei";
-import { useRef, useMemo, useState, useEffect } from "react";
+import { useRef, useMemo, useState } from "react";
 import * as THREE from "three";
 import { useDrag } from "@use-gesture/react";
 import { useSpring, animated } from "@react-spring/three";
 
-// Constant for drop count
-const MAX_DROPS = 1000;
-const GRAVITY = -18.0; // Slightly higher gravity for feel
-const SCALE = 0.2; // 5x smaller
-
-function CupAndSpills() {
+function Cup() {
     const group = useRef<THREE.Group>(null);
     const liquidMesh = useRef<THREE.Mesh>(null);
-    const dropsRef = useRef<THREE.InstancedMesh>(null);
-    const dummy = useMemo(() => new THREE.Object3D(), []);
-
     const { viewport } = useThree();
 
     // Drag interaction state
@@ -29,30 +21,32 @@ function CupAndSpills() {
         config: { mass: 1, tension: 350, friction: 40 }
     }));
 
-    const bind = useDrag(({ offset: [x, y], active }) => {
+    const bind = useDrag(({ offset: [x, y], active, down }) => {
         setIsDragging(active);
+        // Convert drag pixels to viewport units? 
+        // The offset from useDrag is in pixels. We need to map to viewport.
+        // Actually, useDrag gives us delta or movement. 
+        // Let's use 'offset' which accumulates movement.
+
+        // Simplification: map pixel movement to viewport units approx
+        // Viewport width at z=0 is viewport.width
         const aspect = viewport.width / window.innerWidth;
+
+        // Apply new position
         api.start({ pos: [x * aspect, -y * aspect, 0] });
-    }, {
-        // No offset config
+        // Let's just follow mouse exactly when dragging?
     });
 
-    // Physics state for liquid slosh
+    // Physics state
     const lastPos = useRef(new THREE.Vector3(0, 0, 0));
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const velocity = useRef(new THREE.Vector3(0, 0, 0));
+
+    // Liquid physics state (simulating a pendulum/spring)
     const liquidRotation = useRef(new THREE.Vector2(0, 0));
     const liquidAngularVelocity = useRef(new THREE.Vector2(0, 0));
 
-    // Particle System State
-    // We need a stable array to track life/velocity of drops
-    const drops = useMemo(() => {
-        return new Array(MAX_DROPS).fill(0).map(() => ({
-            position: new THREE.Vector3(0, -100, 0),
-            velocity: new THREE.Vector3(0, 0, 0),
-            life: 0,
-            active: false
-        }));
-    }, []);
-
+    // Steam particles
     const steamSystem = useMemo(() => {
         const particles = [];
         for (let i = 0; i < 20; i++) {
@@ -65,192 +59,97 @@ function CupAndSpills() {
         }
         return particles;
     }, []);
+
     const steamRef = useRef<THREE.Points>(null);
 
-    useFrame((state, delta) => {
+    useFrame(() => {
         if (!group.current || !liquidMesh.current) return;
 
-        // --- 1. Cup & Liquid Physics ---
-
-        // Get current position (updates from spring are applied by react-spring to the group)
-        // Note: group.current.position is animated by spring? 
-        // Wait, useSpring applies to the `animated.group`.
-        // We can read the values from the spring or just read the object position.
-
-        // Calculate velocity for liquid physics
-        // We need world position of the cup group to calculate velocity?
-        // The group's position is local to its parent (Scene).
+        // Get current position from the spring-animated group
         const currentPos = group.current.position.clone();
+
+        // Calculate velocity for liquid physics based on actual movement
         const displacement = currentPos.clone().sub(lastPos.current);
+
+        // Update last pos
         lastPos.current.copy(currentPos);
 
-        // Liquid Physics (Spring Simulation)
-        const MOVEMENT_INFLUENCE = 4.0;
+        // 2. Liquid Physics (Spring Simulation)
+        const MOVEMENT_INFLUENCE = 3.5; // Increased sensitivity for small scale
         const DAMPING = 0.94;
         const STIFFNESS = 0.08;
-        const MAX_TILT = 0.7;
+        const MAX_TILT = 0.5;
 
-        // Moving Right (+x) -> Force tilts liquid Left (+z rot). 
-        // Moving Up (+y) -> Force tilts liquid Down (+x rot).
         const forceX = -displacement.y * MOVEMENT_INFLUENCE;
         const forceZ = displacement.x * MOVEMENT_INFLUENCE;
 
         const extensionX = liquidRotation.current.x;
         const extensionY = liquidRotation.current.y;
 
+        // Acceleration
         const accelX = forceX - STIFFNESS * extensionX - (1 - DAMPING) * liquidAngularVelocity.current.x;
         const accelY = forceZ - STIFFNESS * extensionY - (1 - DAMPING) * liquidAngularVelocity.current.y;
 
+        // Integration
         liquidAngularVelocity.current.x += accelX;
         liquidAngularVelocity.current.y += accelY;
 
         liquidRotation.current.x += liquidAngularVelocity.current.x;
         liquidRotation.current.y += liquidAngularVelocity.current.y;
 
-        // Clamp slosh
+        // Clamp
         liquidRotation.current.x = THREE.MathUtils.clamp(liquidRotation.current.x, -MAX_TILT, MAX_TILT);
         liquidRotation.current.y = THREE.MathUtils.clamp(liquidRotation.current.y, -MAX_TILT, MAX_TILT);
 
-        // Apply rotation stabilization + slosh
-        // Relative to cup: -CupRot + Slosh
+        // Apply rotation
+        // For a transparent cup, we want the liquid surface to try to stay horizontal world-wise.
+        // Liquid mesh is child of Group. Group rotates.
+        // Liquid rotation relative to Group = -Group Rotation + Slosh.
+
+        // Convert slosh (liquidRotation) to be relative to world up.
+        // Then apply inverse of group rotation.
+
+        // Simplification: 
+        // liquidMesh.rotation.x = (liquidRotation.current.x) - group.current.rotation.x;
+        // liquidMesh.rotation.z = (liquidRotation.current.y) - group.current.rotation.z;
+        // But we need to account for base geometry rotation [-Math.PI/2, 0, 0] of the cylinder? 
+        // Wait, we changed geometry to be a vertical cylinder `cylinderGeometry args={[0.82, 0.62, 1.6, 30]}`.
+        // So base rotation should be 0.
+
         liquidMesh.current.rotation.x = liquidRotation.current.x - group.current.rotation.x;
         liquidMesh.current.rotation.z = liquidRotation.current.y - group.current.rotation.z;
 
-        // Cup Tilt based on drag
+        // Tilt cup slightly when dragging
+        // Only if dragging? Or always based on velocity?
         if (isDragging) {
-            // More tilt = more spill fun
-            group.current.rotation.z = THREE.MathUtils.lerp(group.current.rotation.z, -displacement.x * 8, 0.1);
-            group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, displacement.y * 8, 0.1);
+            group.current.rotation.z = THREE.MathUtils.lerp(group.current.rotation.z, -displacement.x * 5, 0.1);
+            group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, displacement.y * 5, 0.1);
         } else {
             group.current.rotation.z = THREE.MathUtils.lerp(group.current.rotation.z, 0, 0.1);
             group.current.rotation.x = THREE.MathUtils.lerp(group.current.rotation.x, 0, 0.1);
         }
 
-        // --- 2. Spilling Logic ---
-
-        // Determine Spill
-        // We spill if the cup is tilted significantly.
-        // Calculate total tilt angle from up vector.
-        const cupUp = new THREE.Vector3(0, 1, 0);
-        // Apply cup rotation to up vector
-        cupUp.applyEuler(group.current.rotation);
-        // Angle between cup up and world up (0,1,0)
-        const tiltAngle = cupUp.angleTo(new THREE.Vector3(0, 1, 0));
-
-        const SPILL_THRESHOLD = 0.5; // ~30 degrees start spilling
-
-        if (tiltAngle > SPILL_THRESHOLD && dropsRef.current) {
-            // Spawn drops
-            // We need the lowest point on the rim in world space.
-            // Rim is circle radius ~0.9 (scaled 0.2 -> 0.18) at Y ~1.0 (scaled -> 0.2).
-
-            // Find direction of tilt in XZ plane
-            // The liquid "low point" is roughly opposite to the Up-vector projected on XZ.
-            // Or simpler: The direction the cup is tilting TOWARDS.
-
-            // Let's use the Down vector of the cup projected on local rim?
-            // Actually, just find the vertex on the rim that has the lowest World Y.
-
-            // Rim center in local
-            // Finding lowest point:
-            // The cup 'Down' vector (0, -1, 0) in world space is what we want? No, that's bottom.
-            // We want the point on the rim circle.
-            // Vector pointing to lowest rim point:
-            // Project World Down vector onto the plane defined by Cup Up?
-            // Let's rely on simple trig:
-            // If cup is rotated Z by -45deg (tilted right), lowest point is at x=+r.
-
-            // Local Down Vector projected to rim plane:
-            // Transform World Down (0,-1,0) into Local Space.
-            const worldDown = new THREE.Vector3(0, -1, 0);
-            const localDown = worldDown.clone().applyQuaternion(group.current.quaternion.clone().invert());
-
-            // Project to XZ plane (rim plane)
-            const rimDir = new THREE.Vector2(localDown.x, localDown.z).normalize();
-
-            // Rim radius approx 0.9 (top)
-            const localSpawnPos = new THREE.Vector3(rimDir.x * 0.9, 1.0, rimDir.y * 0.9); // Top of cup is Y=1.0 local at scale 1 (before group scale) -> cylinder height 2.0 (center 0) -> top is +1.0
-
-            // Convert to World
-            const worldSpawnPos = localSpawnPos.clone().applyMatrix4(group.current.matrixWorld);
-
-            // Velocity: Cup Velocity + outward flow
-            // Flow direction: World Down projected effectively?
-            // Initial velocity mostly down + some outward from cup center?
-            const flowDir = worldSpawnPos.clone().sub(currentPos).normalize(); // Outward from center
-
-            // Spawn rate: higher tilt = more drops
-            const spawnCount = Math.floor((tiltAngle - SPILL_THRESHOLD) * 5) + 1;
-
-            let spawned = 0;
-            for (let i = 0; i < MAX_DROPS && spawned < spawnCount; i++) {
-                if (!drops[i].active) {
-                    drops[i].active = true;
-                    drops[i].life = 100;
-                    drops[i].position.copy(worldSpawnPos);
-                    // Random variation
-                    drops[i].position.x += (Math.random() - 0.5) * 0.05;
-                    drops[i].position.z += (Math.random() - 0.5) * 0.05;
-
-                    // Velocity
-                    drops[i].velocity.set(
-                        flowDir.x * 0.2 + displacement.x * 10, // Inherit drag velocity
-                        displacement.y * 10,
-                        flowDir.z * 0.2
-                    );
-                    spawned++;
-                }
-            }
-        }
-
-        // Update Drops Physics
-        if (dropsRef.current) {
-            let activeCount = 0;
-            for (let i = 0; i < MAX_DROPS; i++) {
-                const d = drops[i];
-                if (d.active) {
-                    // Gravity
-                    d.velocity.y += GRAVITY * delta * 0.5; // Scale gravity
-                    d.position.add(d.velocity.clone().multiplyScalar(delta));
-
-                    // Kill if off screen
-                    if (d.position.y < -5) {
-                        d.active = false;
-                    } else {
-                        // Update Matrix
-                        dummy.position.copy(d.position);
-                        // Scale drop
-                        dummy.scale.set(0.05, 0.05, 0.05);
-                        dummy.updateMatrix();
-                        dropsRef.current.setMatrixAt(i, dummy.matrix);
-                        activeCount++;
-                    }
-                } else {
-                    // Hide inactive
-                    dummy.position.set(0, -1000, 0);
-                    dummy.updateMatrix();
-                    dropsRef.current.setMatrixAt(i, dummy.matrix);
-                }
-            }
-            dropsRef.current.instanceMatrix.needsUpdate = true;
-        }
-
-        // --- 3. Steam Update ---
+        // 3. Steam Update
         if (steamRef.current) {
             const positions = steamRef.current.geometry.attributes.position.array as Float32Array;
+
             steamSystem.forEach((p, i) => {
                 p.life -= 1;
                 p.pos.add(p.velocity);
+
                 p.pos.x -= displacement.x * 0.5;
                 p.pos.y -= displacement.y * 0.5;
+
                 if (p.life <= 0) {
                     p.life = p.maxLife;
-                    p.pos.set((Math.random() - 0.5) * 0.4 * 0.2, 0, (Math.random() - 0.5) * 0.4 * 0.2);
+                    p.pos.set((Math.random() - 0.5) * 0.4 * 0.2, 0, (Math.random() - 0.5) * 0.4 * 0.2); // Scaled down emission area
                 }
+
                 positions[i * 3] = p.pos.x;
-                positions[i * 3 + 1] = p.pos.y + 0.15;
+                positions[i * 3 + 1] = p.pos.y + 0.15; // Scaled down start height
                 positions[i * 3 + 2] = p.pos.z;
             });
+
             steamRef.current.geometry.attributes.position.needsUpdate = true;
         }
     });
@@ -258,83 +157,78 @@ function CupAndSpills() {
     // Materials
     const plasticMaterial = new THREE.MeshPhysicalMaterial({
         color: "#ffffff",
-        transmission: 0.95, // High transmission for glass/plastic
-        opacity: 1,
         transparent: true,
-        roughness: 0.1,
+        opacity: 0.3,
+        transmission: 0.95,
+        roughness: 0.05,
         metalness: 0,
-        ior: 1.5, // Plastic IOR
-        thickness: 0.1, // Volume rendering for transmission
-        side: THREE.DoubleSide
+        clearcoat: 1,
+        clearcoatRoughness: 0
     });
 
     const coffeeMaterial = new THREE.MeshStandardMaterial({
-        color: "#24130a", // Darker rich coffee
-        roughness: 0.2,
+        color: "#301b0e",
+        roughness: 0.4,
         metalness: 0.0,
         transparent: true,
         opacity: 0.95
     });
 
-    const dropMaterial = new THREE.MeshStandardMaterial({
-        color: "#24130a",
-        roughness: 0.1,
-        metalness: 0
-    });
+    // Scales
+    const SCALE = 0.2; // 5x smaller
 
     return (
-        <>
-            {/* Cup Group */}
-            {/* @ts-ignore */}
-            <animated.group ref={group} position={pos} scale={SCALE} {...bind()} className="cursor-grab active:cursor-grabbing">
+        // @ts-ignore
+        <animated.group ref={group} position={pos} scale={SCALE} {...bind()} className="cursor-grab active:cursor-grabbing">
+            {/* Cup Body - Venti Shape (Taller, tapered) */}
+            {/* TopRadius=0.8, BottomRadius=0.6, Height=1.2 -> Scaled down locally or via group */}
+            {/* Venti is approx 20oz. Taller and more tapered. */}
+            {/* Top 3.5 inch, Bottom 2.4 inch, Height 6.6 inch */}
+            <mesh material={plasticMaterial} position={[0, 0, 0]}>
+                <cylinderGeometry args={[0.9, 0.65, 2.0, 32]} />
+            </mesh>
 
-                {/* Cup Body - Venti Shape */}
-                <mesh material={plasticMaterial} position={[0, 0, 0]}>
-                    {/* Open cylinder? No, default is closed. Open ended cylinder requires openEnded=true */}
-                    {/* But we need a bottom. So Cylinder is fine. Side=DoubleSide handles visibility inside. */}
-                    <cylinderGeometry args={[0.9, 0.65, 2.0, 32, 1, false]} />
+            {/* No Handle for Venti cup usually */}
+
+            {/* Liquid */}
+            {/* Liquid geometric center needs to be offset so it sits at the bottom */}
+            {/* Cup height 2.0. Bottom is at -1.0. */}
+            {/* Liquid height 1.6. Half is 0.8. */}
+            {/* So liquid center should be at -1.0 + 0.8 = -0.2. */}
+
+            <group position={[0, -0.2, 0]}>
+                <mesh ref={liquidMesh} material={coffeeMaterial}>
+                    <cylinderGeometry args={[0.82, 0.62, 1.6, 30]} />
                 </mesh>
+            </group>
 
-                {/* Lid */}
-                <mesh material={plasticMaterial} position={[0, 1.05, 0]}>
-                    <cylinderGeometry args={[0.92, 0.92, 0.1, 32]} />
-                </mesh>
-
-                {/* Liquid */}
-                <group position={[0, -0.2, 0]}>
-                    <mesh ref={liquidMesh} material={coffeeMaterial}>
-                        {/* Slightly smaller radius to fight z-fighting if same size, but with thickness it's fine. */}
-                        {/* Radius 0.82 ensures it's inside 0.9/0.65 cylinder appropriately? */}
-                        <cylinderGeometry args={[0.82, 0.62, 1.6, 30]} />
-                    </mesh>
-                </group>
-
-                {/* Steam */}
-                <points ref={steamRef} position={[0, 1.2, 0]}>
-                    <bufferGeometry>
-                        <bufferAttribute
-                            attach="attributes-position"
-                            count={steamSystem.length}
-                            args={[new Float32Array(steamSystem.length * 3), 3]}
-                        />
-                    </bufferGeometry>
-                    <pointsMaterial
-                        transparent
-                        opacity={0.2}
-                        size={0.5}
-                        sizeAttenuation={true}
-                        color="#ffffff"
-                        depthWrite={false}
+            {/* Steam */}
+            <points ref={steamRef} position={[0, 1.2, 0]}>
+                <bufferGeometry>
+                    <bufferAttribute
+                        attach="attributes-position"
+                        count={steamSystem.length}
+                        args={[new Float32Array(steamSystem.length * 3), 3]}
                     />
-                </points>
-            </animated.group>
+                </bufferGeometry>
+                <pointsMaterial
+                    transparent
+                    opacity={0.2}
+                    size={0.5} // Scaled relative to group? No, points size is in pixels unless attenuation. 
+                    // If size attenuation is on (default), it's in world units.
+                    // World units 0.5 is huge if cup is 0.2.
+                    sizeAttenuation={true}
+                    color="#ffffff"
+                    depthWrite={false}
+                />
+            </points>
 
-            {/* Spilled Drops (World Space) */}
-            <instancedMesh ref={dropsRef} args={[undefined, undefined, MAX_DROPS]}>
-                <sphereGeometry args={[1, 8, 8]} />
-                <primitive object={dropMaterial} attach="material" />
-            </instancedMesh>
-        </>
+            {/* Lid? Venti cups usually have lids. */}
+            <mesh material={plasticMaterial} position={[0, 1.05, 0]}>
+                <cylinderGeometry args={[0.92, 0.92, 0.1, 32]} />
+            </mesh>
+
+        </animated.group>
     );
 }
 
@@ -346,14 +240,18 @@ export default function CoffeeCup() {
                 camera={{ position: [0, 0, 5], fov: 45 }}
                 eventSource={typeof document !== 'undefined' ? document.body : undefined}
                 shadows
-                gl={{ alpha: true, antialias: true }}
             >
                 <ambientLight intensity={0.7} />
                 <pointLight position={[10, 10, 10]} intensity={1} castShadow />
                 <Environment preset="city" />
-
-                <CupAndSpills />
-
+                <Cup />
+                {/* Contact shadow needs to follow the cup? It's static at 0,-2. 
+            If cup moves, shadow should move.
+            We can put shadow in the cup group? No, shadow should be on 'floor'.
+            But we don't have a floor. 
+            Let's remove shadow for floating UI element feel or drag shadow with it.
+            For now, remove static shadow as it looks weird if cup moves away.
+         */}
             </Canvas>
         </div>
     );
