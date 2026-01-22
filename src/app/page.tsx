@@ -65,6 +65,19 @@ export default function Home() {
           />
         </motion.h1>
         <LiveAge show={animationPhase === "complete"} />
+        {animationPhase === "complete" && (
+          <motion.a
+            href="https://github.com/wxldon"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 text-sm tracking-wide opacity-60 hover:opacity-100 transition-opacity"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 0.6, y: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut", delay: 0.3 }}
+          >
+            Check out my GitHub →
+          </motion.a>
+        )}
       </motion.div>
     </main>
   );
