@@ -24,7 +24,6 @@ export default function CoffeeCup() {
   // Physics-based tilt using spring
   const tiltValue = useMotionValue(0);
   const smoothTilt = useSpring(tiltValue, { stiffness: 150, damping: 12, mass: 0.5 });
-  const coffeeSkew = useSpring(tiltValue, { stiffness: 100, damping: 8 });
 
   const controls = useAnimation();
   const cupRef = useRef<HTMLDivElement>(null);
@@ -282,7 +281,7 @@ export default function CoffeeCup() {
                 style={{
                   background: "linear-gradient(to bottom, rgba(180, 120, 60, 0.9), rgba(139, 90, 43, 0.8))",
                   transformOrigin: "center center",
-                  skewX: coffeeSkew,
+                  skewX: useSpring(tiltValue, { stiffness: 100, damping: 8 }),
                 }}
               />
               {/* Surface shine */}
