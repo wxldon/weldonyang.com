@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useState, useRef } from "react";
 
 const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const preserveChars = [" ", "[", "]"];
 
 interface ScrambleTextProps {
   text: string;
@@ -11,15 +11,17 @@ interface ScrambleTextProps {
   onComplete?: () => void;
 }
 
-const preserveChars = [" ", "[", "]"];
-
 export default function ScrambleText({ text, className, onComplete }: ScrambleTextProps) {
+  const hasScrambled = useRef(false);
   const [displayText, setDisplayText] = useState(
     text.split("").map((char) => (preserveChars.includes(char) ? char : characters[Math.floor(Math.random() * characters.length)])).join("")
   );
 
   useEffect(() => {
-    const duration = 2000; // 2 seconds total
+    if (hasScrambled.current) return;
+    hasScrambled.current = true;
+
+    const duration = 2000;
     const intervalTime = duration / (text.length * 3);
     let iteration = 0;
     const totalIterations = text.length * 3;
