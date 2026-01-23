@@ -39,6 +39,7 @@ export default function CookieParody() {
               backgroundColor: "rgba(255, 255, 255, 0.1)",
               backdropFilter: "blur(10px)",
               borderColor: "rgba(150, 150, 150, 0.3)",
+              borderRadius: 0,
             }}
           >
             <p className="text-sm mb-3">
@@ -51,6 +52,7 @@ export default function CookieParody() {
                 style={{
                   borderColor: "rgba(139, 92, 246, 0.5)",
                   backgroundColor: "rgba(139, 92, 246, 0.1)",
+                  borderRadius: 0,
                 }}
               >
                 Yes, he&apos;s a good worker
@@ -61,6 +63,7 @@ export default function CookieParody() {
                 style={{
                   borderColor: "rgba(150, 150, 150, 0.3)",
                   backgroundColor: "rgba(150, 150, 150, 0.05)",
+                  borderRadius: 0,
                 }}
               >
                 No because I&apos;m selfish
