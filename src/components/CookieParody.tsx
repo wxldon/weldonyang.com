@@ -34,7 +34,7 @@ export default function CookieParody() {
           transition={{ type: "spring", stiffness: 100, damping: 15 }}
         >
           <div
-            className="rounded-lg border p-4"
+            className="border p-4"
             style={{
               backgroundColor: "rgba(255, 255, 255, 0.1)",
               backdropFilter: "blur(10px)",
@@ -47,7 +47,7 @@ export default function CookieParody() {
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => handleChoice("yes")}
-                className="px-3 py-1.5 text-xs rounded-md border transition-all hover:scale-105"
+                className="w-full px-3 py-1.5 text-xs border transition-colors hover:brightness-125"
                 style={{
                   borderColor: "rgba(139, 92, 246, 0.5)",
                   backgroundColor: "rgba(139, 92, 246, 0.1)",
@@ -57,7 +57,7 @@ export default function CookieParody() {
               </button>
               <button
                 onClick={() => handleChoice("no")}
-                className="px-3 py-1.5 text-xs rounded-md border transition-all hover:scale-105 opacity-60 hover:opacity-100"
+                className="w-full px-3 py-1.5 text-xs border transition-colors opacity-60 hover:opacity-100"
                 style={{
                   borderColor: "rgba(150, 150, 150, 0.3)",
                   backgroundColor: "rgba(150, 150, 150, 0.05)",
