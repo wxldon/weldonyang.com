@@ -37,7 +37,7 @@ export default function LiveAge({ show }: LiveAgeProps) {
       animate={{ opacity: 0.7, y: 0 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
     >
-      <span className="font-mono">{age}</span> year old developer.
+      {age} year old developer.
     </motion.p>
   );
 }
