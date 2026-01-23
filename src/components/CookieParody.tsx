@@ -1,0 +1,74 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+
+export default function CookieParody() {
+  const [show, setShow] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    // Show after a delay when page loads
+    const timer = setTimeout(() => {
+      setShow(true);
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleChoice = (choice: "yes" | "no") => {
+    setDismissed(true);
+    setTimeout(() => setShow(false), 300);
+  };
+
+  if (!show) return null;
+
+  return (
+    <AnimatePresence>
+      {!dismissed && (
+        <motion.div
+          className="fixed top-4 left-4 z-50 max-w-xs"
+          initial={{ y: -200, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -200, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 100, damping: 15 }}
+        >
+          <div
+            className="rounded-lg border p-4"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
+              backdropFilter: "blur(10px)",
+              borderColor: "rgba(150, 150, 150, 0.3)",
+            }}
+          >
+            <p className="text-sm mb-3">
+              Do you allow Weldon to have some cookies?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleChoice("yes")}
+                className="px-3 py-1.5 text-xs rounded-md border transition-all hover:scale-105"
+                style={{
+                  borderColor: "rgba(139, 92, 246, 0.5)",
+                  backgroundColor: "rgba(139, 92, 246, 0.1)",
+                }}
+              >
+                Yes, he&apos;s a good worker
+              </button>
+              <button
+                onClick={() => handleChoice("no")}
+                className="px-3 py-1.5 text-xs rounded-md border transition-all hover:scale-105 opacity-60 hover:opacity-100"
+                style={{
+                  borderColor: "rgba(150, 150, 150, 0.3)",
+                  backgroundColor: "rgba(150, 150, 150, 0.05)",
+                }}
+              >
+                No because I&apos;m selfish
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}

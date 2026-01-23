@@ -31,7 +31,7 @@ export default function GradientCursor() {
     <motion.div
       className="pointer-events-none fixed inset-0 z-0 opacity-50"
       animate={{
-        background: `radial-gradient(600px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(120, 119, 198, 0.15), transparent 40%)`,
+        background: `radial-gradient(300px circle at ${mousePosition.x}px ${mousePosition.y}px, rgba(120, 119, 198, 0.15), transparent 40%)`,
       }}
       transition={{ type: "tween", ease: "easeOut", duration: 0.2 }}
       style={{ opacity: isVisible ? 0.5 : 0 }}
