@@ -75,7 +75,7 @@ export default function Home() {
             animate={{ opacity: 0.7, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut", delay: 0.3 }}
           >
-            Check out my <span className="underline" style={{ color: "#8b5cf6" }}>GitHub →</span>
+            Take a peek at my <span className="underline" style={{ color: "#8b5cf6" }}>GitHub →</span>
           </motion.a>
         )}
       </motion.div>
