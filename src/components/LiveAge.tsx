@@ -19,7 +19,7 @@ export default function LiveAge({ show }: LiveAgeProps) {
       const now = Date.now();
       const ageInMs = now - BIRTHDATE;
       const ageInYears = ageInMs / (1000 * 60 * 60 * 24 * 365.25);
-      setAge(ageInYears.toFixed(8));
+      setAge(ageInYears.toFixed(10));
     };
 
     updateAge();
