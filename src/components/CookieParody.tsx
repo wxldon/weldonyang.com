@@ -27,14 +27,14 @@ export default function CookieParody() {
     <AnimatePresence>
       {!dismissed && (
         <motion.div
-          className="fixed top-4 left-4 z-50 max-w-xs"
+          className="fixed top-0 left-4 z-50 max-w-xs"
           initial={{ y: -200, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -200, opacity: 0 }}
           transition={{ type: "spring", stiffness: 100, damping: 15 }}
         >
           <div
-            className="border p-4"
+            className="border border-t-0 p-6"
             style={{
               backgroundColor: "rgba(255, 255, 255, 0.1)",
               backdropFilter: "blur(10px)",
@@ -42,10 +42,10 @@ export default function CookieParody() {
               borderRadius: 0,
             }}
           >
-            <p className="text-sm mb-3">
+            <p className="text-sm mb-5">
               Do you allow Weldon to have some cookies?
             </p>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-3">
               <button
                 onClick={() => handleChoice("yes")}
                 className="w-full px-3 py-1.5 text-xs border transition-colors hover:brightness-125"
