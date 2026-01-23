@@ -70,12 +70,12 @@ export default function Home() {
             href="https://github.com/wxldon"
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-4 text-sm tracking-wide opacity-60 hover:opacity-100 transition-opacity"
+            className="mt-4 text-lg tracking-wide opacity-70 hover:opacity-100 transition-opacity"
             initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 0.6, y: 0 }}
+            animate={{ opacity: 0.7, y: 0 }}
             transition={{ duration: 0.6, ease: "easeOut", delay: 0.3 }}
           >
-            Check out my GitHub →
+            Check out my <span className="underline" style={{ color: "#8b5cf6" }}>GitHub</span> →
           </motion.a>
         )}
       </motion.div>
