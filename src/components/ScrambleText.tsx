@@ -13,13 +13,22 @@ interface ScrambleTextProps {
 
 export default function ScrambleText({ text, className, onComplete }: ScrambleTextProps) {
   const hasScrambled = useRef(false);
-  const [displayText, setDisplayText] = useState(
-    text.split("").map((char) => (preserveChars.includes(char) ? char : characters[Math.floor(Math.random() * characters.length)])).join("")
-  );
+  const [displayText, setDisplayText] = useState(text);
+  const [mounted, setMounted] = useState(false);
+
+  // Set mounted state to trigger scramble only on client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-    if (hasScrambled.current) return;
+    if (!mounted || hasScrambled.current) return;
     hasScrambled.current = true;
+
+    // Start with scrambled text
+    setDisplayText(
+      text.split("").map((char) => (preserveChars.includes(char) ? char : characters[Math.floor(Math.random() * characters.length)])).join("")
+    );
 
     const duration = 2000;
     const intervalTime = duration / (text.length * 3);
@@ -50,7 +59,7 @@ export default function ScrambleText({ text, className, onComplete }: ScrambleTe
     }, intervalTime);
 
     return () => clearInterval(interval);
-  }, [text, onComplete]);
+  }, [text, onComplete, mounted]);
 
   return (
     <span className={className}>
