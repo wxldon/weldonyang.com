@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import ScrambleText from "@/components/ScrambleText";
-import GradientCursor from "@/components/GradientCursor";
 import LiveAge from "@/components/LiveAge";
 import CookieParody from "@/components/CookieParody";
 
@@ -22,7 +21,6 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-6">
-      <GradientCursor />
       <CookieParody />
       <motion.div
         className="relative z-10 flex flex-col items-center justify-center"
