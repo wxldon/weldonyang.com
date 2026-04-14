@@ -30,7 +30,7 @@ export default function ScrambleText({ text, className, onComplete }: ScrambleTe
       text.split("").map((char) => (preserveChars.includes(char) ? char : characters[Math.floor(Math.random() * characters.length)])).join("")
     );
 
-    const duration = 2000;
+    const duration = 1000;
     const intervalTime = duration / (text.length * 3);
     let iteration = 0;
     const totalIterations = text.length * 3;
