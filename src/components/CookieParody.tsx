@@ -26,7 +26,7 @@ export default function CookieParody() {
     <AnimatePresence>
       {!dismissed && (
         <motion.div
-          className="fixed top-0 left-6 z-50"
+          className="fixed bottom-0 left-6 z-50"
           initial={{ y: -250, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -250, opacity: 0 }}
@@ -41,19 +41,14 @@ export default function CookieParody() {
               boxShadow: "0 10px 40px rgba(139, 92, 246, 0.15), 0 0 80px rgba(139, 92, 246, 0.05)",
             }}
           >
-            {/* Cookie icon */}
-            <div className="text-3xl mb-4">
-              🍪
-            </div>
-
             {/* Title */}
-            <p className="text-base mb-2 opacity-90">
-              Cookie Request
+            <p className="text-base mb-2 opacity-90 text-center">
+              Cookie Request 🍪
             </p>
 
             {/* Question */}
-            <p className="text-sm mb-6 opacity-60 max-w-[280px]">
-              Do you allow Weldon to have some cookies?
+            <p className="text-sm mb-6 opacity-60 max-w-[400px] text-center">
+              Allow Weldon to have some cookies?
             </p>
 
             {/* Buttons */}
@@ -72,7 +67,7 @@ export default function CookieParody() {
                 }}
                 whileTap={{ scale: 0.98 }}
               >
-                Yes, he&apos;s a good worker
+                Eat up king
               </motion.button>
               <motion.button
                 onClick={() => handleChoice("no")}
@@ -84,7 +79,7 @@ export default function CookieParody() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                No because I&apos;m selfish
+                Beat it fatty
               </motion.button>
             </div>
           </div>
