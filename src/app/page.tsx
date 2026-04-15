@@ -75,7 +75,7 @@ export default function Home() {
             >
               <Link
                 href="/how-far-have-i-gone"
-                className="mt-2 text-lg tracking-wide opacity-70 hover:opacity-100 transition-opacity"
+                className="mt-2 text-lg tracking-wide hover:opacity-100 transition-opacity"
               >
                 How far have I gone? <span className="underline" style={{ color: "#8b5cf6" }}>→</span>
               </Link>
