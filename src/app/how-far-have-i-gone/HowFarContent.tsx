@@ -3,6 +3,9 @@
 import { useRef, useEffect, useState, type ReactNode } from "react";
 import { StravaStats } from "@/lib/strava";
 import Link from "next/link";
+import RouteMap from "@/components/maps/RouteMap";
+import BayMap from "@/components/maps/BayMap";
+import { RUN_ROUTE_SF_BOSTON, BIKE_ROUTE_SF_BOSTON } from "@/lib/routes";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -330,6 +333,82 @@ export default function HowFarContent({ stats }: { stats: StravaStats }) {
         </section>
 
         {/* ============================================================ */}
+        {/*  Map Visualizations                                           */}
+        {/* ============================================================ */}
+        <section className="hfhig-section">
+          <RevealSection>
+            <p className="hfhig-section-eyebrow">Where Could I Have Gone?</p>
+            <h2 className="hfhig-section-heading">
+              Plotting every<br />mile on the map.
+            </h2>
+            <p className="hfhig-section-body">
+              Running and cycling laid end to end from San Francisco to Boston.
+              Swimming lapped around the San Francisco Bay.
+            </p>
+          </RevealSection>
+
+          <RevealSection delay={0.1}>
+            <div className="hfhig-map-block">
+              <div className="hfhig-map-header">
+                <span className="hfhig-map-icon">🏃</span>
+                <div>
+                  <h3 className="hfhig-map-title" style={{ color: "#ff6b6b" }}>
+                    Running
+                  </h3>
+                  <p className="hfhig-map-sub">San Francisco → Boston</p>
+                </div>
+              </div>
+              <RouteMap
+                route={RUN_ROUTE_SF_BOSTON}
+                traveledMiles={toMiles(stats.all_run_totals.distance)}
+                startLabel="San Francisco"
+                endLabel="Boston"
+                accentColor="#ff3b3b"
+              />
+            </div>
+          </RevealSection>
+
+          <RevealSection delay={0.15}>
+            <div className="hfhig-map-block">
+              <div className="hfhig-map-header">
+                <span className="hfhig-map-icon">🚴</span>
+                <div>
+                  <h3 className="hfhig-map-title" style={{ color: "#74b9ff" }}>
+                    Cycling
+                  </h3>
+                  <p className="hfhig-map-sub">San Francisco → Boston (scenic route)</p>
+                </div>
+              </div>
+              <RouteMap
+                route={BIKE_ROUTE_SF_BOSTON}
+                traveledMiles={toMiles(stats.all_ride_totals.distance)}
+                startLabel="San Francisco"
+                endLabel="Boston"
+                accentColor="#2563eb"
+              />
+            </div>
+          </RevealSection>
+
+          <RevealSection delay={0.2}>
+            <div className="hfhig-map-block">
+              <div className="hfhig-map-header">
+                <span className="hfhig-map-icon">🏊</span>
+                <div>
+                  <h3 className="hfhig-map-title" style={{ color: "#55efc4" }}>
+                    Swimming
+                  </h3>
+                  <p className="hfhig-map-sub">Laps around the San Francisco Bay</p>
+                </div>
+              </div>
+              <BayMap
+                traveledMiles={toMiles(stats.all_swim_totals.distance)}
+                accentColor="#0ea5e9"
+              />
+            </div>
+          </RevealSection>
+        </section>
+
+        {/* ============================================================ */}
         {/*  All-Time Breakdown                                           */}
         {/* ============================================================ */}
         <section className="hfhig-section hfhig-section--dark">
@@ -589,6 +668,33 @@ const styles = `
   margin: 0 auto 3rem;
   line-height: 1.5;
   font-weight: 400;
+}
+
+/* ---- Map blocks ---- */
+.hfhig-map-block {
+  margin: 2.5rem auto 0;
+  max-width: 960px;
+}
+.hfhig-map-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.hfhig-map-icon {
+  font-size: 1.75rem;
+}
+.hfhig-map-title {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.hfhig-map-sub {
+  font-size: 0.8125rem;
+  color: rgba(255,255,255,0.4);
+  margin: 0.15rem 0 0;
+  letter-spacing: 0.02em;
 }
 
 /* ---- Activity blocks ---- */
