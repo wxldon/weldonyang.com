@@ -81,6 +81,20 @@ export default function Home() {
               </Link>
             </motion.div>
           )}
+          {animationPhase === "complete" && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 0.7, y: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut", delay: 0.7 }}
+            >
+              <Link
+                href="/my-coach"
+                className="mt-2 text-lg tracking-wide hover:opacity-100 transition-opacity"
+              >
+                My workout today <span className="underline" style={{ color: "#8b5cf6" }}>→</span>
+              </Link>
+            </motion.div>
+          )}
         </motion.div>
       </LayoutGroup>
     </main>
