@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import {
   getRecentActivities,
   getActivity,
@@ -129,6 +130,11 @@ export async function GET(req: NextRequest) {
     `) as { data: StravaStreams }[];
     const ftp = estimateFTPFromHistory(rows.map((r) => ({ streams: r.data })));
     if (ftp) await upsertAthleteProfile({ ftp });
+  }
+
+  if (total > 0) {
+    revalidatePath("/how-far-have-i-gone");
+    revalidatePath("/my-coach");
   }
 
   return NextResponse.json({ ingested: total, errors, mode });
