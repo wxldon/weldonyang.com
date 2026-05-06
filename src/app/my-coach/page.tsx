@@ -2,8 +2,10 @@ import { Metadata } from "next";
 import {
   getAthleteProfile,
   getRecommendationForDate,
+  getPlannedItems,
   sql,
   type ActivityRow,
+  type PlannedItem,
 } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
 import { todayLocalDate, USER_TZ, toLocalDateStr } from "@/lib/dates";
@@ -92,10 +94,11 @@ export default async function MyCoachPage() {
   }
 
   const date = todayLocalDate();
-  const [profile, rec, activities] = await Promise.all([
+  const [profile, rec, activities, plannedToday] = await Promise.all([
     getAthleteProfile(),
     getRecommendationForDate(date),
     getActivitiesInWindow(date),
+    getPlannedItems(date),
   ]);
 
   let completed: Omit<ActivityRow, "raw"> | null = null;
@@ -123,6 +126,7 @@ export default async function MyCoachPage() {
         profile,
         recommendation: rec,
         completed,
+        plannedToday,
       }}
       isAdmin={admin}
       weather={weather}
@@ -130,3 +134,5 @@ export default async function MyCoachPage() {
     />
   );
 }
+
+export type { PlannedItem };

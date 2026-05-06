@@ -7,6 +7,7 @@ import type {
   ActivityRow,
   AthleteProfile,
   RecommendationRow,
+  PlannedItem,
 } from "@/lib/db";
 import type { WeatherSummary } from "@/lib/weather";
 import Calendar from "./Calendar";
@@ -22,6 +23,7 @@ type State =
       profile: AthleteProfile | null;
       recommendation: RecommendationRow | null;
       completed: Omit<ActivityRow, "raw"> | null;
+      plannedToday: PlannedItem[];
     };
 
 interface Segment {
@@ -109,8 +111,11 @@ export default function MyCoachContent({
     );
   }
 
-  const { date, profile, recommendation, completed } = state;
+  const { date, profile, recommendation, completed, plannedToday } = state;
   const goal = profile?.fitness_goal ?? null;
+  const runnableItem = plannedToday.find((i) => i.template_tags.length > 0 && !i.is_fixed && !i.is_rest);
+  const fixedItems = plannedToday.filter((i) => i.is_fixed || i.is_rest);
+  const showRecommendation = !!recommendation && !!runnableItem;
 
   return (
     <Shell isAdmin={isAdmin}>
@@ -138,20 +143,7 @@ export default function MyCoachContent({
         {weather && <WeatherStrip weather={weather} />}
       </div>
 
-      {!recommendation && (
-        <div style={card}>
-          <p style={{ opacity: 0.7, marginBottom: "1rem" }}>No prescription yet for today.</p>
-          {isAdmin ? (
-            <button onClick={() => generate(false)} disabled={generating} style={btn}>
-              {generating ? "Generating…" : "Generate today's workout"}
-            </button>
-          ) : (
-            <p style={{ opacity: 0.5, fontSize: "0.875rem" }}>Check back after the daily 5am UTC run.</p>
-          )}
-        </div>
-      )}
-
-      {recommendation && (
+      {showRecommendation && recommendation && (
         <div style={{ position: "relative" }}>
           <WorkoutCard
             prescribed={recommendation.prescribed as Prescribed}
@@ -178,7 +170,29 @@ export default function MyCoachContent({
         </div>
       )}
 
-      {recommendation && (
+      {!showRecommendation && runnableItem && !recommendation && (
+        <div style={card}>
+          <p style={{ opacity: 0.7, marginBottom: "1rem" }}>No prescription yet for today.</p>
+          {isAdmin ? (
+            <button onClick={() => generate(false)} disabled={generating} style={btn}>
+              {generating ? "Generating…" : "Generate today's workout"}
+            </button>
+          ) : (
+            <p style={{ opacity: 0.5, fontSize: "0.875rem" }}>Check back after the daily 5am UTC run.</p>
+          )}
+        </div>
+      )}
+
+      {fixedItems.length > 0 && <FixedItemsCard items={fixedItems} hideHeader={showRecommendation} />}
+
+      {plannedToday.length === 0 && (
+        <div style={card}>
+          <h2 style={{ fontSize: "1.25rem", marginBottom: "0.5rem" }}>Rest day</h2>
+          <p style={{ opacity: 0.75 }}>Nothing scheduled. Recover. Stretch. Sleep.</p>
+        </div>
+      )}
+
+      {plannedToday.length > 0 && (
         <div style={{ marginTop: "1.25rem" }}>
           <CompletionStatus completed={completed} />
         </div>
@@ -305,6 +319,42 @@ function formatPace(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.round(s % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
+}
+
+function FixedItemsCard({ items, hideHeader }: { items: PlannedItem[]; hideHeader: boolean }) {
+  return (
+    <div style={{ ...card, marginTop: hideHeader ? "1rem" : 0 }}>
+      {!hideHeader && (
+        <h2 style={{ fontSize: "1.125rem", marginBottom: "0.75rem" }}>Today</h2>
+      )}
+      {hideHeader && (
+        <h3 style={{ fontSize: "0.75rem", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.5rem" }}>
+          Also today
+        </h3>
+      )}
+      <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "0.375rem" }}>
+        {items.map((it) => (
+          <li
+            key={it.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.625rem",
+              padding: "0.5rem 0.75rem",
+              background: "rgba(255,255,255,0.03)",
+              borderRadius: 6,
+              fontSize: "0.9375rem",
+            }}
+          >
+            <span style={{ opacity: 0.5, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", minWidth: 64 }}>
+              {it.is_rest ? "Rest" : it.sport ?? "—"}
+            </span>
+            <span>{it.notes ?? (it.is_rest ? "Rest day" : "")}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function WeatherStrip({ weather }: { weather: WeatherSummary }) {
