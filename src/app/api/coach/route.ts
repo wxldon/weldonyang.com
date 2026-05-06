@@ -111,7 +111,7 @@ async function generate(req: NextRequest) {
   const fitness = computeFitnessLoad(recent);
 
   const recentSummaries = recent.slice(0, 20).map((a) => ({
-    date: (a.start_date instanceof Date ? a.start_date.toISOString() : String(a.start_date)).slice(0, 10),
+    date: new Date(a.start_date).toISOString().slice(0, 10),
     type: a.type,
     name: a.name,
     duration_min: a.moving_time_s ? Math.round(a.moving_time_s / 60) : null,
