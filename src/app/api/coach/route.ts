@@ -111,7 +111,7 @@ async function generate(req: NextRequest) {
   const fitness = computeFitnessLoad(recent);
 
   const recentSummaries = recent.slice(0, 20).map((a) => ({
-    date: a.start_date.slice(0, 10),
+    date: (a.start_date instanceof Date ? a.start_date.toISOString() : String(a.start_date)).slice(0, 10),
     type: a.type,
     name: a.name,
     duration_min: a.moving_time_s ? Math.round(a.moving_time_s / 60) : null,
@@ -150,8 +150,8 @@ Rules:
   (d) an effort label like "85-90% max" or "walk" — preserve as target string; emit hr_range only if confidently derivable.
 - This athlete prefers pace in /mi. Prefer pace_range_per_mi_s for runs unless the template explicitly uses /km.
 - Scale durations and intensities based on recent fitness (CTL/ATL/TSB) and how recent comparable workouts went. Hard intervals shorter if athlete is fatigued (TSB < -15). Slightly longer if fresh (TSB > 5).
-- The reasoning field MUST cite (i) the fitness goal, (ii) one or two specific recent comparable workouts (date, pace, HR), and (iii) the resulting prescription decision. 3-5 sentences.
-- Output STRICT JSON. No prose outside JSON.
+- The reasoning field MUST cite (i) the fitness goal, (ii) one or two specific recent comparable workouts (date, pace, HR), and (iii) the resulting prescription decision. 3-5 sentences. Put your full chain of thought inside the reasoning field — do NOT think out loud before the JSON.
+- Output STRICT JSON ONLY. No prose, no markdown fences, no explanations before or after. Your entire response must parse as JSON. The first character of your response must be "{".
 
 Output schema:
 {
@@ -203,7 +203,7 @@ Output schema:
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const resp = await client.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 2000,
+    max_tokens: 4000,
     system: [{ type: "text", text: sys, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: userMessage }],
   });
