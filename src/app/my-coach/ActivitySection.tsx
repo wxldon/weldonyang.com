@@ -37,9 +37,11 @@ const ZONE_COLORS: Record<string, string> = {
 export default function ActivitySection({
   activity,
   localDate,
+  maxHr,
 }: {
   activity: Omit<ActivityRow, "raw">;
   localDate: string;
+  maxHr: number;
 }) {
   const [streams, setStreams] = useState<DecimatedStreams | null>(null);
   const [streamsState, setStreamsState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
@@ -105,7 +107,7 @@ export default function ActivitySection({
 
       {activity.time_in_zones && (
         <Block title="Time in zones">
-          <ZoneBars zones={activity.time_in_zones} />
+          <ZoneBars zones={activity.time_in_zones} maxHr={maxHr} />
         </Block>
       )}
 
@@ -271,7 +273,15 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-function ZoneBars({ zones }: { zones: Record<string, number> }) {
+const ZONE_PCT: Record<string, [number, number]> = {
+  z1: [0.50, 0.60],
+  z2: [0.60, 0.70],
+  z3: [0.70, 0.80],
+  z4: [0.80, 0.90],
+  z5: [0.90, 1.00],
+};
+
+function ZoneBars({ zones, maxHr }: { zones: Record<string, number>; maxHr: number }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const total = Object.values(zones).reduce((a, b) => a + b, 0);
   if (total === 0) return null;
@@ -281,6 +291,11 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
     const m = Math.round(sec / 60);
     if (m < 60) return `${m} min`;
     return `${Math.floor(m / 60)}h ${m % 60}m`;
+  };
+
+  const hrRange = (z: string): [number, number] => {
+    const [lo, hi] = ZONE_PCT[z];
+    return [Math.round(maxHr * lo), Math.round(maxHr * hi)];
   };
 
   let cum = 0;
@@ -297,28 +312,31 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
   return (
     <div>
       <div style={{ position: "relative", paddingTop: 26 }}>
-        {hoveredSeg && hoveredSeg.pct > 0 && (
-          <div
-            style={{
-              position: "absolute",
-              top: 0,
-              left: `${Math.min(Math.max(hoveredSeg.start + hoveredSeg.pct / 2, 8), 92)}%`,
-              transform: "translateX(-50%)",
-              padding: "0.25rem 0.5rem",
-              background: "#0a0a0a",
-              border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: 4,
-              fontSize: "0.75rem",
-              whiteSpace: "nowrap",
-              pointerEvents: "none",
-              color: "#fff",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-            }}
-          >
-            <span style={{ color: ZONE_COLORS[hoveredSeg.z], fontWeight: 600 }}>{hoveredSeg.z.toUpperCase()}</span>
-            <span style={{ opacity: 0.7 }}> · {Math.round(hoveredSeg.pct)}% · {fmt(hoveredSeg.v)}</span>
-          </div>
-        )}
+        {hoveredSeg && hoveredSeg.pct > 0 && (() => {
+          const [lo, hi] = hrRange(hoveredSeg.z);
+          return (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                left: `${Math.min(Math.max(hoveredSeg.start + hoveredSeg.pct / 2, 8), 92)}%`,
+                transform: "translateX(-50%)",
+                padding: "0.25rem 0.5rem",
+                background: "#0a0a0a",
+                border: "1px solid rgba(255,255,255,0.15)",
+                borderRadius: 4,
+                fontSize: "0.75rem",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                color: "#fff",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+              }}
+            >
+              <span style={{ color: ZONE_COLORS[hoveredSeg.z], fontWeight: 600 }}>{hoveredSeg.z.toUpperCase()}</span>
+              <span style={{ opacity: 0.7 }}> · {lo}–{hi} bpm · {fmt(hoveredSeg.v)}</span>
+            </div>
+          );
+        })()}
         <div style={{ display: "flex", height: 14, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
           {segments.map(({ z, pct }) => {
             if (pct === 0) return null;
@@ -340,7 +358,7 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
         </div>
       </div>
       <div style={{ marginTop: "0.5rem", display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.5rem", fontSize: "0.75rem" }}>
-        {segments.map(({ z, v, pct }) => (
+        {segments.map(({ z, pct }) => (
           <div
             key={z}
             onMouseEnter={() => setHovered(z)}
@@ -349,7 +367,6 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
               display: "flex",
               alignItems: "center",
               gap: "0.375rem",
-              flexWrap: "wrap",
               opacity: hovered && hovered !== z ? 0.4 : 1,
               transition: "opacity 0.15s",
             }}
@@ -357,7 +374,6 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
             <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[z], flexShrink: 0 }} />
             <span style={{ opacity: 0.65 }}>{z.toUpperCase()}</span>
             <span style={{ opacity: 0.85, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}%</span>
-            <span style={{ opacity: 0.45, fontVariantNumeric: "tabular-nums" }}>· {fmt(v)}</span>
           </div>
         ))}
       </div>

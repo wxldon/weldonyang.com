@@ -207,6 +207,7 @@ export default function MyCoachContent({
               key={a.activity.id}
               activity={a.activity}
               localDate={a.localDate}
+              maxHr={state.kind === "ready" ? state.profile?.max_hr ?? 190 : 190}
             />
           ))}
         </div>
