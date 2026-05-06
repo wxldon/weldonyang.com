@@ -118,6 +118,23 @@ export async function getRecentActivityRows(sinceDays: number): Promise<Activity
   return rows;
 }
 
+export async function getActivityById(id: number): Promise<ActivityRow | null> {
+  const rows = (await sql`select * from activities where id = ${id}`) as ActivityRow[];
+  return rows[0] ?? null;
+}
+
+export interface StreamData {
+  data: number[] | [number, number][];
+  series_type: string;
+  original_size: number;
+  resolution: string;
+}
+
+export async function getStreamsForActivity(id: number): Promise<Record<string, StreamData> | null> {
+  const rows = (await sql`select data from streams where activity_id = ${id}`) as { data: Record<string, StreamData> }[];
+  return rows[0]?.data ?? null;
+}
+
 export async function getTemplatesByTags(tags: string[], sport?: string): Promise<WorkoutTemplate[]> {
   const rows = sport
     ? ((await sql`

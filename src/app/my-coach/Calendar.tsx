@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface PlannedItem {
@@ -322,8 +323,9 @@ function DayCell({
       </div>
 
       {day.completions.map((c) => (
-        <div
+        <Link
           key={c.activity_id}
+          href={`/my-coach/activity/${c.activity_id}`}
           style={{
             fontSize: "0.6875rem",
             color: "#8b5cf6",
@@ -334,6 +336,14 @@ function DayCell({
             display: "flex",
             alignItems: "center",
             gap: "0.4375rem",
+            textDecoration: "none",
+            transition: "background 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(139, 92, 246, 0.20)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "rgba(139, 92, 246, 0.10)";
           }}
         >
           <span style={{ fontSize: "0.8125rem", lineHeight: 1 }}>✓</span>
@@ -341,7 +351,7 @@ function DayCell({
             <span>{c.distance_m ? `${(c.distance_m / 1609.344).toFixed(1)} mi` : c.type}</span>
             {c.moving_time_s ? <span style={{ opacity: 0.85 }}>{formatDuration(c.moving_time_s)}</span> : null}
           </span>
-        </div>
+        </Link>
       ))}
     </div>
   );
