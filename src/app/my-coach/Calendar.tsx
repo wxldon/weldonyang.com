@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface PlannedItem {
   id: number;
@@ -113,11 +114,7 @@ export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: 
     }
   }
 
-  if (!days) {
-    return <div style={{ opacity: 0.4, fontSize: "0.875rem", padding: "1rem 0" }}>Loading calendar…</div>;
-  }
-
-  const weeks: CalendarDay[][] = [days.slice(0, 7), days.slice(7, 14)];
+  const weeks: CalendarDay[][] | null = days ? [days.slice(0, 7), days.slice(7, 14)] : null;
 
   return (
     <div style={{ marginTop: "2.5rem" }}>
@@ -128,48 +125,135 @@ export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: 
         )}
       </div>
 
-      <div style={{ display: "grid", gap: "0.75rem" }}>
-        {weeks.map((week, wi) => (
-          <div
-            key={wi}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              gap: "0.5rem",
-            }}
-          >
-            {week.map((day) => (
-              <DayCell
-                key={day.date}
-                day={day}
-                today={today}
-                isToday={day.date === today}
-                isAdmin={isAdmin}
-                isDropTarget={dropTarget === day.date}
-                onDragStart={(id) => setDragId(id)}
-                onDragEnd={() => {
-                  setDragId(null);
-                  setDropTarget(null);
-                }}
-                onDragOver={(e) => {
-                  if (dragId != null) {
-                    e.preventDefault();
-                    setDropTarget(day.date);
-                  }
-                }}
-                onDragLeave={() => {
-                  if (dropTarget === day.date) setDropTarget(null);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleDrop(day.date);
-                }}
-              />
-            ))}
-          </div>
-        ))}
+      <div style={{ position: "relative" }}>
+        <AnimatePresence mode="wait">
+          {!weeks ? (
+            <motion.div
+              key="skeleton"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <CalendarSkeleton />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="calendar"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+              style={{ display: "grid", gap: "0.75rem" }}
+            >
+              {weeks.map((week, wi) => (
+                <motion.div
+                  key={wi}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.05 + wi * 0.06, ease: [0.22, 1, 0.36, 1] }}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(7, 1fr)",
+                    gap: "0.5rem",
+                  }}
+                >
+                  {week.map((day) => (
+                    <DayCell
+                      key={day.date}
+                      day={day}
+                      today={today}
+                      isToday={day.date === today}
+                      isAdmin={isAdmin}
+                      isDropTarget={dropTarget === day.date}
+                      onDragStart={(id) => setDragId(id)}
+                      onDragEnd={() => {
+                        setDragId(null);
+                        setDropTarget(null);
+                      }}
+                      onDragOver={(e) => {
+                        if (dragId != null) {
+                          e.preventDefault();
+                          setDropTarget(day.date);
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dropTarget === day.date) setDropTarget(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDrop(day.date);
+                      }}
+                    />
+                  ))}
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
+  );
+}
+
+function CalendarSkeleton() {
+  return (
+    <div style={{ display: "grid", gap: "0.75rem" }}>
+      {[0, 1].map((wi) => (
+        <div
+          key={wi}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, 1fr)",
+            gap: "0.5rem",
+          }}
+        >
+          {Array.from({ length: 7 }).map((_, di) => (
+            <SkeletonCell key={di} delay={(wi * 7 + di) * 0.04} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonCell({ delay }: { delay: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay, ease: [0.22, 1, 0.36, 1] }}
+      style={{
+        minHeight: 96,
+        padding: "0.5rem",
+        background: "rgba(255,255,255,0.025)",
+        border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: 8,
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <Pulse width={24} height={9} />
+        <Pulse width={14} height={11} />
+      </div>
+      <Pulse width="80%" height={16} />
+    </motion.div>
+  );
+}
+
+function Pulse({ width, height }: { width: number | string; height: number }) {
+  return (
+    <motion.div
+      animate={{ opacity: [0.25, 0.55, 0.25] }}
+      transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+      style={{
+        width,
+        height,
+        background: "rgba(255,255,255,0.08)",
+        borderRadius: 4,
+      }}
+    />
   );
 }
 
