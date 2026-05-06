@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import type { ActivityRow } from "@/lib/db";
 
@@ -27,13 +28,33 @@ const ZONE_COLORS: Record<string, string> = {
 
 export default function ActivitySection({
   activity,
-  streams,
   localDate,
 }: {
-  activity: ActivityRow;
-  streams: DecimatedStreams;
+  activity: Omit<ActivityRow, "raw">;
   localDate: string;
 }) {
+  const [streams, setStreams] = useState<DecimatedStreams | null>(null);
+  const [streamsState, setStreamsState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+    setStreamsState("loading");
+    fetch(`/api/activity/${activity.id}/streams`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setStreams(d.streams ?? {});
+        setStreamsState("loaded");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setStreamsState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activity.id]);
+
   const distMi = activity.distance_m ? activity.distance_m / 1609.344 : null;
   const durSec = activity.moving_time_s ?? 0;
   const elevFt = activity.elevation_gain_m ? activity.elevation_gain_m * 3.28084 : null;
@@ -43,7 +64,7 @@ export default function ActivitySection({
   const isRide = sport.includes("ride") || sport.includes("bike");
 
   const paceArr =
-    streams.velocity_smooth && streams.velocity_smooth.length > 0
+    streams?.velocity_smooth && streams.velocity_smooth.length > 0
       ? streams.velocity_smooth.map((v) => (v > 0 ? 1609.344 / v : 0))
       : undefined;
 
@@ -74,19 +95,21 @@ export default function ActivitySection({
         isRide={isRide}
       />
 
-      {streams.latlng && streams.latlng.length > 1 && (
-        <Block title="Route">
-          <ActivityMap latlng={streams.latlng} />
-        </Block>
-      )}
-
       {activity.time_in_zones && (
         <Block title="Time in zones">
           <ZoneBars zones={activity.time_in_zones} />
         </Block>
       )}
 
-      {streams.heartrate && streams.time && (
+      {streamsState === "loading" && <StreamsSkeleton />}
+
+      {streams?.latlng && streams.latlng.length > 1 && (
+        <Block title="Route">
+          <ActivityMap latlng={streams.latlng} />
+        </Block>
+      )}
+
+      {streams?.heartrate && streams.time && (
         <Block title="Heart rate">
           <LineChart
             x={streams.time}
@@ -99,7 +122,7 @@ export default function ActivitySection({
         </Block>
       )}
 
-      {paceArr && streams.time && isRun && (
+      {paceArr && streams?.time && isRun && (
         <Block title="Pace">
           <LineChart
             x={streams.time}
@@ -114,7 +137,7 @@ export default function ActivitySection({
         </Block>
       )}
 
-      {streams.watts && streams.time && streams.watts.some((w) => w > 0) && (
+      {streams?.watts && streams.time && streams.watts.some((w) => w > 0) && (
         <Block title="Power">
           <LineChart
             x={streams.time}
@@ -127,7 +150,7 @@ export default function ActivitySection({
         </Block>
       )}
 
-      {streams.altitude && streams.time && (
+      {streams?.altitude && streams.time && (
         <Block title="Elevation">
           <LineChart
             x={streams.time}
@@ -141,7 +164,7 @@ export default function ActivitySection({
         </Block>
       )}
 
-      {streams.cadence && streams.time && streams.cadence.some((c) => c > 0) && (
+      {streams?.cadence && streams.time && streams.cadence.some((c) => c > 0) && (
         <Block title={isRide ? "Cadence (rpm)" : "Cadence (spm)"}>
           <LineChart
             x={streams.time}
@@ -166,7 +189,7 @@ function StatsGrid({
   isRun,
   isRide,
 }: {
-  activity: ActivityRow;
+  activity: Omit<ActivityRow, "raw">;
   distMi: number | null;
   durSec: number;
   elevFt: number | null;
@@ -382,6 +405,21 @@ function LineChart({
           </text>
         )}
       </svg>
+    </div>
+  );
+}
+
+function StreamsSkeleton() {
+  return (
+    <div style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      {[280, 160, 160].map((h, i) => (
+        <motion.div
+          key={i}
+          animate={{ opacity: [0.3, 0.55, 0.3] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+          style={{ height: h, background: "rgba(255,255,255,0.04)", borderRadius: 6 }}
+        />
+      ))}
     </div>
   );
 }

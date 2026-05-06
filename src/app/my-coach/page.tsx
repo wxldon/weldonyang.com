@@ -4,13 +4,11 @@ import {
   getRecommendationForDate,
   sql,
   type ActivityRow,
-  type StreamData,
 } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
 import { todayLocalDate, USER_TZ, toLocalDateStr } from "@/lib/dates";
 import { getWeatherSummary, type WeatherSummary } from "@/lib/weather";
 import MyCoachContent from "./MyCoachContent";
-import type { DecimatedStreams } from "./ActivitySection";
 
 export const dynamic = "force-dynamic";
 
@@ -25,33 +23,12 @@ interface SetupState {
   hasSchedule: boolean;
 }
 
-const MAX_POINTS = 400;
-
-function decimate(arr: number[] | undefined, target: number): number[] | undefined {
-  if (!arr || arr.length === 0) return undefined;
-  if (arr.length <= target) return arr;
-  const step = arr.length / target;
-  const out: number[] = [];
-  for (let i = 0; i < target; i++) out.push(arr[Math.floor(i * step)]);
-  return out;
-}
-
-function decimatePairs(arr: [number, number][] | undefined, target: number): [number, number][] | undefined {
-  if (!arr || arr.length === 0) return undefined;
-  if (arr.length <= target) return arr;
-  const step = arr.length / target;
-  const out: [number, number][] = [];
-  for (let i = 0; i < target; i++) out.push(arr[Math.floor(i * step)]);
-  return out;
-}
-
-export interface ActivityWithStreams {
-  activity: ActivityRow;
-  streams: DecimatedStreams;
+export interface ActivityHeader {
+  activity: Omit<ActivityRow, "raw">;
   localDate: string;
 }
 
-async function getActivitiesInWindow(today: string): Promise<ActivityWithStreams[]> {
+async function getActivitiesInWindow(today: string): Promise<ActivityHeader[]> {
   const [y, m, d] = today.split("-").map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   const dow = dt.getUTCDay();
@@ -63,42 +40,19 @@ async function getActivitiesInWindow(today: string): Promise<ActivityWithStreams
   const to = toDt.toISOString().slice(0, 10);
 
   const rows = (await sql`
-    select a.*, s.data as stream_data
-    from activities a
-    left join streams s on s.activity_id = a.id
-    where (a.start_date at time zone ${USER_TZ})::date between ${from} and ${to}
-    order by a.start_date desc
-  `) as Array<ActivityRow & { stream_data: Record<string, StreamData> | null }>;
+    select
+      id, start_date, type, name, distance_m, moving_time_s, elapsed_time_s,
+      elevation_gain_m, avg_hr, max_hr, avg_watts, max_watts, weighted_avg_watts,
+      kilojoules, avg_cadence, suffer_score, tss, intensity_factor, time_in_zones
+    from activities
+    where (start_date at time zone ${USER_TZ})::date between ${from} and ${to}
+    order by start_date desc
+  `) as Array<Omit<ActivityRow, "raw">>;
 
-  return rows.map((r) => {
-    const streams: DecimatedStreams = {};
-    if (r.stream_data) {
-      const get = (k: string): number[] | undefined => {
-        const s = r.stream_data?.[k];
-        if (!s || !Array.isArray(s.data)) return undefined;
-        return s.data as number[];
-      };
-      streams.time = decimate(get("time"), MAX_POINTS);
-      streams.heartrate = decimate(get("heartrate"), MAX_POINTS);
-      streams.watts = decimate(get("watts"), MAX_POINTS);
-      streams.cadence = decimate(get("cadence"), MAX_POINTS);
-      streams.velocity_smooth = decimate(get("velocity_smooth"), MAX_POINTS);
-      streams.altitude = decimate(get("altitude"), MAX_POINTS);
-      streams.distance = decimate(get("distance"), MAX_POINTS);
-
-      const latlngStream = r.stream_data.latlng;
-      if (latlngStream && Array.isArray(latlngStream.data)) {
-        streams.latlng = decimatePairs(latlngStream.data as [number, number][], MAX_POINTS);
-      }
-    }
-    const { stream_data: _stream_data, ...activity } = r;
-    void _stream_data;
-    return {
-      activity: activity as ActivityRow,
-      streams,
-      localDate: toLocalDateStr(activity.start_date),
-    };
-  });
+  return rows.map((activity) => ({
+    activity,
+    localDate: toLocalDateStr(activity.start_date),
+  }));
 }
 
 async function checkSetup(): Promise<SetupState> {

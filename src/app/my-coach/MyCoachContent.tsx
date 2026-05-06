@@ -11,7 +11,7 @@ import type {
 import type { WeatherSummary } from "@/lib/weather";
 import Calendar from "./Calendar";
 import ActivitySection from "./ActivitySection";
-import type { ActivityWithStreams } from "./page";
+import type { ActivityHeader } from "./page";
 
 type State =
   | { kind: "needs_db" }
@@ -67,7 +67,7 @@ export default function MyCoachContent({
   state: State;
   isAdmin: boolean;
   weather: WeatherSummary | null;
-  activities: ActivityWithStreams[];
+  activities: ActivityHeader[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -194,7 +194,6 @@ export default function MyCoachContent({
             <ActivitySection
               key={a.activity.id}
               activity={a.activity}
-              streams={a.streams}
               localDate={a.localDate}
             />
           ))}
