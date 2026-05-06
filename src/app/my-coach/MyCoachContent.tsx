@@ -8,6 +8,7 @@ import type {
   AthleteProfile,
   RecommendationRow,
 } from "@/lib/db";
+import type { WeatherSummary } from "@/lib/weather";
 import Calendar from "./Calendar";
 
 type State =
@@ -55,7 +56,15 @@ interface Prescribed {
 
 const purple = "#8b5cf6";
 
-export default function MyCoachContent({ state, isAdmin }: { state: State; isAdmin: boolean }) {
+export default function MyCoachContent({
+  state,
+  isAdmin,
+  weather,
+}: {
+  state: State;
+  isAdmin: boolean;
+  weather: WeatherSummary | null;
+}) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [generating, setGenerating] = useState(false);
@@ -106,22 +115,24 @@ export default function MyCoachContent({ state, isAdmin }: { state: State; isAdm
         <span style={{ opacity: 0.5, fontSize: "0.875rem" }}>{date}</span>
       </div>
 
-      {goal && (
-        <div
-          style={{
-            display: "inline-block",
-            padding: "0.25rem 0.625rem",
-            borderRadius: 999,
-            background: "rgba(139, 92, 246, 0.12)",
-            border: `1px solid ${purple}`,
-            color: purple,
-            fontSize: "0.8125rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          Goal: {goal}
-        </div>
-      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center", marginBottom: "1.5rem" }}>
+        {goal && (
+          <div
+            style={{
+              display: "inline-block",
+              padding: "0.25rem 0.625rem",
+              borderRadius: 999,
+              background: "rgba(139, 92, 246, 0.12)",
+              border: `1px solid ${purple}`,
+              color: purple,
+              fontSize: "0.8125rem",
+            }}
+          >
+            Goal: {goal}
+          </div>
+        )}
+        {weather && <WeatherStrip weather={weather} />}
+      </div>
 
       {!recommendation && (
         <div style={card}>
@@ -278,6 +289,41 @@ function formatPace(s: number): string {
   const m = Math.floor(s / 60);
   const sec = Math.round(s % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
+}
+
+function WeatherStrip({ weather }: { weather: WeatherSummary }) {
+  const nextChange = weather.events.find((e) => e.kind === "rain-start" || e.kind === "rain-stop");
+  const sunEvent = weather.events.find((e) => e.kind === "sunset" || e.kind === "sunrise");
+
+  const bits: string[] = [];
+  if (nextChange) bits.push(nextChange.label.toLowerCase());
+  if (sunEvent) bits.push(sunEvent.label.toLowerCase());
+  if (weather.windMph >= 12) bits.push(`wind ${weather.windMph}${weather.gustMph > weather.windMph + 5 ? `g${weather.gustMph}` : ""} mph`);
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        padding: "0.25rem 0.625rem",
+        borderRadius: 999,
+        background: "rgba(255,255,255,0.04)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        fontSize: "0.8125rem",
+        color: "rgba(255,255,255,0.85)",
+      }}
+      title={`H ${weather.todayHighF}° / L ${weather.todayLowF}° · feels like ${weather.feelsLikeF}° · UV ${weather.uvMax}`}
+    >
+      <span aria-hidden="true">{weather.emoji}</span>
+      <span>
+        {weather.tempF}°F · {weather.conditions.toLowerCase()}
+      </span>
+      {bits.length > 0 && (
+        <span style={{ opacity: 0.65 }}>· {bits.join(" · ")}</span>
+      )}
+    </div>
+  );
 }
 
 function CompletionStatus({ completed }: { completed: ActivityRow | null }) {

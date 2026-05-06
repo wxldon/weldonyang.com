@@ -7,6 +7,7 @@ import {
 } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
+import { getWeatherSummary, type WeatherSummary } from "@/lib/weather";
 import MyCoachContent from "./MyCoachContent";
 
 export const dynamic = "force-dynamic";
@@ -37,16 +38,21 @@ async function checkSetup(): Promise<SetupState> {
 }
 
 export default async function MyCoachPage() {
-  const [setup, admin] = await Promise.all([checkSetup(), isAdmin()]);
+  const [setup, admin, weather] = await Promise.all([
+    checkSetup(),
+    isAdmin(),
+    getWeatherSummary().catch((): WeatherSummary | null => null),
+  ]);
 
   if (!setup.hasSchema) {
-    return <MyCoachContent state={{ kind: "needs_db" }} isAdmin={admin} />;
+    return <MyCoachContent state={{ kind: "needs_db" }} isAdmin={admin} weather={weather} />;
   }
   if (!setup.hasTemplates || !setup.hasSchedule) {
     return (
       <MyCoachContent
         state={{ kind: "needs_seed", hasTemplates: setup.hasTemplates, hasSchedule: setup.hasSchedule }}
         isAdmin={admin}
+        weather={weather}
       />
     );
   }
@@ -73,6 +79,7 @@ export default async function MyCoachPage() {
         completed,
       }}
       isAdmin={admin}
+      weather={weather}
     />
   );
 }
