@@ -8,6 +8,7 @@ import {
 import { isAdmin } from "@/lib/auth";
 import { todayLocalDate, USER_TZ, toLocalDateStr } from "@/lib/dates";
 import { getWeatherSummary, type WeatherSummary } from "@/lib/weather";
+import { markRecommendationCompleted } from "@/lib/db";
 import MyCoachContent from "./MyCoachContent";
 
 export const dynamic = "force-dynamic";
@@ -97,10 +98,21 @@ export default async function MyCoachPage() {
     getActivitiesInWindow(date),
   ]);
 
-  let completed: ActivityRow | null = null;
+  let completed: Omit<ActivityRow, "raw"> | null = null;
   if (rec?.completed_activity_id) {
-    const rows = (await sql`select * from activities where id = ${rec.completed_activity_id}`) as ActivityRow[];
-    completed = rows[0] ?? null;
+    completed = activities.find((a) => a.activity.id === rec.completed_activity_id)?.activity ?? null;
+  }
+  if (!completed) {
+    // Fallback: find any activity logged on today's local date. Useful when
+    // an activity arrived via /api/sync rather than the webhook (which is
+    // what writes completed_activity_id back).
+    const todayActivity = activities.find((a) => a.localDate === date)?.activity;
+    if (todayActivity) {
+      completed = todayActivity;
+      if (rec && !rec.completed_activity_id) {
+        await markRecommendationCompleted(date, todayActivity.id).catch(() => {});
+      }
+    }
   }
 
   return (

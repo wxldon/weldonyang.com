@@ -276,6 +276,12 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
   if (total === 0) return null;
   const order = ["z1", "z2", "z3", "z4", "z5"];
 
+  const fmt = (sec: number) => {
+    const m = Math.round(sec / 60);
+    if (m < 60) return `${m} min`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+  };
+
   return (
     <div>
       <div style={{ display: "flex", height: 14, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
@@ -283,7 +289,13 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
           const v = zones[z] ?? 0;
           const pct = (v / total) * 100;
           if (pct === 0) return null;
-          return <div key={z} style={{ width: `${pct}%`, background: ZONE_COLORS[z] }} />;
+          return (
+            <div
+              key={z}
+              title={`${z.toUpperCase()} · ${Math.round(pct)}% · ${fmt(v)}`}
+              style={{ width: `${pct}%`, background: ZONE_COLORS[z], cursor: "help" }}
+            />
+          );
         })}
       </div>
       <div style={{ marginTop: "0.5rem", display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.375rem", fontSize: "0.75rem" }}>
@@ -291,10 +303,14 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
           const v = zones[z] ?? 0;
           const pct = (v / total) * 100;
           return (
-            <div key={z} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+            <div
+              key={z}
+              title={`${fmt(v)} in ${z.toUpperCase()}`}
+              style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "help" }}
+            >
               <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[z] }} />
               <span style={{ opacity: 0.65 }}>{z.toUpperCase()}</span>
-              <span style={{ marginLeft: "auto", opacity: 0.85 }}>{Math.round(pct)}%</span>
+              <span style={{ opacity: 0.85 }}>{Math.round(pct)}%</span>
             </div>
           );
         })}

@@ -21,7 +21,7 @@ type State =
       date: string;
       profile: AthleteProfile | null;
       recommendation: RecommendationRow | null;
-      completed: ActivityRow | null;
+      completed: Omit<ActivityRow, "raw"> | null;
     };
 
 interface Segment {
@@ -187,9 +187,7 @@ export default function MyCoachContent({
       <Calendar isAdmin={isAdmin} today={date} />
 
       {activities.length > 0 && (
-        <div style={{ marginTop: "3rem" }}>
-          <h2 style={{ fontSize: "1.125rem", opacity: 0.85, marginBottom: "0.25rem" }}>Activities</h2>
-          <p style={{ fontSize: "0.8125rem", opacity: 0.5 }}>Click any ✓ on the calendar to jump to that activity.</p>
+        <div style={{ marginTop: "1.5rem" }}>
           {activities.map((a) => (
             <ActivitySection
               key={a.activity.id}
@@ -344,7 +342,7 @@ function WeatherStrip({ weather }: { weather: WeatherSummary }) {
   );
 }
 
-function CompletionStatus({ completed }: { completed: ActivityRow | null }) {
+function CompletionStatus({ completed }: { completed: Omit<ActivityRow, "raw"> | null }) {
   if (!completed) {
     return (
       <div style={{ ...statusPill, background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)" }}>
