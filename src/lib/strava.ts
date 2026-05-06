@@ -134,7 +134,7 @@ export async function getActivity(id: number): Promise<StravaActivitySummary & R
 
 export async function getActivityStreams(
   id: number,
-  types: StreamType[] = ["time", "heartrate", "watts", "cadence", "velocity_smooth", "altitude", "distance"],
+  types: StreamType[] = ["time", "heartrate", "watts", "cadence", "velocity_smooth", "altitude", "distance", "latlng"],
 ): Promise<StravaStreams> {
   const keys = types.join(",");
   const res = await stravaFetch(`/activities/${id}/streams?keys=${keys}&key_by_type=true`);

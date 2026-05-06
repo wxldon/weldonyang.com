@@ -36,6 +36,15 @@ function decimate(arr: number[] | undefined, target: number): number[] | undefin
   return out;
 }
 
+function decimatePairs(arr: [number, number][] | undefined, target: number): [number, number][] | undefined {
+  if (!arr || arr.length === 0) return undefined;
+  if (arr.length <= target) return arr;
+  const step = arr.length / target;
+  const out: [number, number][] = [];
+  for (let i = 0; i < target; i++) out.push(arr[Math.floor(i * step)]);
+  return out;
+}
+
 export interface ActivityWithStreams {
   activity: ActivityRow;
   streams: DecimatedStreams;
@@ -76,6 +85,11 @@ async function getActivitiesInWindow(today: string): Promise<ActivityWithStreams
       streams.velocity_smooth = decimate(get("velocity_smooth"), MAX_POINTS);
       streams.altitude = decimate(get("altitude"), MAX_POINTS);
       streams.distance = decimate(get("distance"), MAX_POINTS);
+
+      const latlngStream = r.stream_data.latlng;
+      if (latlngStream && Array.isArray(latlngStream.data)) {
+        streams.latlng = decimatePairs(latlngStream.data as [number, number][], MAX_POINTS);
+      }
     }
     const { stream_data: _stream_data, ...activity } = r;
     void _stream_data;
