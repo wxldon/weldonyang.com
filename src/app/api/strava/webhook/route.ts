@@ -17,6 +17,7 @@ import {
   computeTSS,
   estimateMaxHR,
 } from "@/lib/training";
+import { toLocalDateStr } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
       `;
     }
 
-    const localDate = new Date(detail.start_date).toISOString().slice(0, 10);
+    const localDate = toLocalDateStr(detail.start_date);
     const rec = await getRecommendationForDate(localDate);
     if (rec && !rec.completed_activity_id) {
       await markRecommendationCompleted(localDate, detail.id);

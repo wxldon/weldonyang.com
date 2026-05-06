@@ -8,6 +8,7 @@ import {
   type PlannedItem,
   type ActivityRow,
 } from "@/lib/db";
+import { USER_TZ } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -80,9 +81,11 @@ export async function GET(req: NextRequest) {
   const items = await getPlannedItemsRange(from, to);
 
   const activities = (await sql`
-    select id, type, name, distance_m, moving_time_s, avg_hr, to_char(start_date, 'YYYY-MM-DD') as date
+    select
+      id, type, name, distance_m, moving_time_s, avg_hr,
+      to_char(start_date at time zone ${USER_TZ}, 'YYYY-MM-DD') as date
     from activities
-    where start_date::date between ${from} and ${to}
+    where (start_date at time zone ${USER_TZ})::date between ${from} and ${to}
     order by start_date
   `) as Array<Pick<ActivityRow, "id" | "type" | "name" | "distance_m" | "moving_time_s" | "avg_hr"> & { date: string }>;
 

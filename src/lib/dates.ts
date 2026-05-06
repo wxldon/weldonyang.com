@@ -1,4 +1,16 @@
-const TZ = process.env.USER_TIMEZONE || "America/Los_Angeles";
+export const USER_TZ = process.env.USER_TIMEZONE || "America/Los_Angeles";
+const TZ = USER_TZ;
+
+export function toLocalDateStr(input: Date | string): string {
+  const d = typeof input === "string" ? new Date(input) : input;
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(d);
+}
 
 export function todayLocalDate(): string {
   const fmt = new Intl.DateTimeFormat("en-CA", {
