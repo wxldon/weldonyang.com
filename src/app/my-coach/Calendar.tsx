@@ -44,6 +44,14 @@ function addDaysStr(dateStr: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+function formatDuration(seconds: number): string {
+  const totalMin = Math.round(seconds / 60);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
 export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -220,8 +228,8 @@ function DayCell({
             marginTop: "auto",
           }}
         >
-          ✓ {c.distance_m ? `${(c.distance_m / 1000).toFixed(1)}k` : c.type}
-          {c.moving_time_s ? ` · ${Math.round(c.moving_time_s / 60)}m` : ""}
+          ✓ {c.distance_m ? `${(c.distance_m / 1609.344).toFixed(1)} mi` : c.type}
+          {c.moving_time_s ? ` · ${formatDuration(c.moving_time_s)}` : ""}
         </div>
       ))}
     </div>

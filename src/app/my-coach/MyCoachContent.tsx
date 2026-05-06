@@ -288,16 +288,24 @@ function CompletionStatus({ completed }: { completed: ActivityRow | null }) {
       </div>
     );
   }
-  const km = completed.distance_m ? (completed.distance_m / 1000).toFixed(2) : null;
-  const min = completed.moving_time_s ? Math.round(completed.moving_time_s / 60) : null;
+  const mi = completed.distance_m ? (completed.distance_m / 1609.344).toFixed(2) : null;
+  const dur = completed.moving_time_s ? formatDurationLong(completed.moving_time_s) : null;
   return (
     <div style={{ ...statusPill, background: "rgba(139, 92, 246, 0.12)", color: purple, border: `1px solid ${purple}` }}>
       Completed ✓ · {completed.name}
       <span style={{ opacity: 0.7, marginLeft: "0.5rem" }}>
-        {km ? `${km} km` : ""}{min ? ` · ${min} min` : ""}{completed.avg_hr ? ` · avg HR ${Math.round(completed.avg_hr)}` : ""}
+        {mi ? `${mi} mi` : ""}{dur ? ` · ${dur}` : ""}{completed.avg_hr ? ` · avg HR ${Math.round(completed.avg_hr)}` : ""}
       </span>
     </div>
   );
+}
+
+function formatDurationLong(seconds: number): string {
+  const totalMin = Math.round(seconds / 60);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}min`;
 }
 
 function Shell({ children, isAdmin }: { children: React.ReactNode; isAdmin: boolean }) {
