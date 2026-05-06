@@ -403,12 +403,37 @@ function CompletionStatus({ completed }: { completed: Omit<ActivityRow, "raw"> |
   const mi = completed.distance_m ? (completed.distance_m / 1609.344).toFixed(2) : null;
   const dur = completed.moving_time_s ? formatDurationLong(completed.moving_time_s) : null;
   return (
-    <div style={{ ...statusPill, background: "rgba(139, 92, 246, 0.12)", color: purple, border: `1px solid ${purple}` }}>
+    <a
+      href={`#activity-${completed.id}`}
+      onClick={(e) => {
+        e.preventDefault();
+        const el = document.getElementById(`activity-${completed.id}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          history.replaceState(null, "", `#activity-${completed.id}`);
+        }
+      }}
+      style={{
+        ...statusPill,
+        background: "rgba(139, 92, 246, 0.12)",
+        color: purple,
+        border: `1px solid ${purple}`,
+        textDecoration: "none",
+        cursor: "pointer",
+        transition: "background 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "rgba(139, 92, 246, 0.20)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "rgba(139, 92, 246, 0.12)";
+      }}
+    >
       Completed ✓ · {completed.name}
       <span style={{ opacity: 0.7, marginLeft: "0.5rem" }}>
         {mi ? `${mi} mi` : ""}{dur ? ` · ${dur}` : ""}{completed.avg_hr ? ` · avg HR ${Math.round(completed.avg_hr)}` : ""}
       </span>
-    </div>
+    </a>
   );
 }
 
