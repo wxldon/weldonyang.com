@@ -223,13 +223,19 @@ function DayCell({
             fontSize: "0.6875rem",
             color: "#8b5cf6",
             background: "rgba(139, 92, 246, 0.10)",
-            padding: "0.125rem 0.375rem",
+            padding: "0.25rem 0.4375rem",
             borderRadius: 4,
             marginTop: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4375rem",
           }}
         >
-          ✓ {c.distance_m ? `${(c.distance_m / 1609.344).toFixed(1)} mi` : c.type}
-          {c.moving_time_s ? ` · ${formatDuration(c.moving_time_s)}` : ""}
+          <span style={{ fontSize: "0.8125rem", lineHeight: 1 }}>✓</span>
+          <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.25, textAlign: "left" }}>
+            <span>{c.distance_m ? `${(c.distance_m / 1609.344).toFixed(1)} mi` : c.type}</span>
+            {c.moving_time_s ? <span style={{ opacity: 0.85 }}>{formatDuration(c.moving_time_s)}</span> : null}
+          </span>
         </div>
       ))}
     </div>
