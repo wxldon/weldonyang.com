@@ -339,7 +339,7 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
           })}
         </div>
       </div>
-      <div style={{ marginTop: "0.5rem", display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.375rem", fontSize: "0.75rem" }}>
+      <div style={{ marginTop: "0.5rem", display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.5rem", fontSize: "0.75rem" }}>
         {segments.map(({ z, v, pct }) => (
           <div
             key={z}
@@ -349,14 +349,15 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
               display: "flex",
               alignItems: "center",
               gap: "0.375rem",
+              flexWrap: "wrap",
               opacity: hovered && hovered !== z ? 0.4 : 1,
               transition: "opacity 0.15s",
             }}
           >
-            <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[z] }} />
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[z], flexShrink: 0 }} />
             <span style={{ opacity: 0.65 }}>{z.toUpperCase()}</span>
-            <span style={{ opacity: 0.85 }}>{Math.round(pct)}%</span>
-            <span style={{ marginLeft: "auto", opacity: 0.45, fontVariantNumeric: "tabular-nums" }}>{fmt(v)}</span>
+            <span style={{ opacity: 0.85, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}%</span>
+            <span style={{ opacity: 0.45, fontVariantNumeric: "tabular-nums" }}>· {fmt(v)}</span>
           </div>
         ))}
       </div>
