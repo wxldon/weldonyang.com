@@ -39,9 +39,11 @@ create table if not exists athlete_profile (
   resting_hr            int,
   threshold_hr          int,
   threshold_pace_s_per_km real,
+  fitness_goal          text,
   updated_at            timestamptz not null default now(),
   constraint singleton check (id = 1)
 );
+alter table athlete_profile add column if not exists fitness_goal text;
 
 create table if not exists workout_templates (
   id                    serial primary key,
@@ -59,8 +61,28 @@ create table if not exists workout_schedule (
   day_of_week           int primary key check (day_of_week between 0 and 6),
   template_tags         text[] not null,
   sport                 text,
-  notes                 text
+  notes                 text,
+  is_fixed              boolean not null default false
 );
+alter table workout_schedule add column if not exists is_fixed boolean not null default false;
+
+create table if not exists workout_planned_dates (
+  date                  date primary key,
+  created_at            timestamptz not null default now()
+);
+
+create table if not exists workout_planned_items (
+  id                    serial primary key,
+  date                  date not null,
+  template_tags         text[] not null default '{}',
+  sport                 text,
+  notes                 text,
+  is_fixed              boolean not null default false,
+  is_rest               boolean not null default false,
+  position              int not null default 0,
+  created_at            timestamptz not null default now()
+);
+create index if not exists workout_planned_items_date_idx on workout_planned_items (date);
 
 create table if not exists workout_recommendations (
   date                  date primary key,

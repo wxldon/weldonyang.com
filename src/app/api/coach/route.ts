@@ -4,13 +4,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   getAthleteProfile,
   getRecentActivityRows,
-  getScheduleForDay,
+  getPlannedItems,
   getTemplatesByTags,
   getRecommendationForDate,
   upsertRecommendation,
   upsertAthleteProfile,
   type WorkoutTemplate,
+  type PlannedItem,
 } from "@/lib/db";
+import { isAdminFromRequest } from "@/lib/auth";
 import {
   computeFitnessLoad,
   estimateMaxHR,
@@ -47,6 +49,11 @@ async function generate(req: NextRequest) {
   const force = url.searchParams.get("force") === "1";
   const date = todayLocalDate();
 
+  // Force regeneration is admin-only since it costs Anthropic credits.
+  if (force && !isAdminFromRequest(req)) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   if (!force) {
     const existing = await getRecommendationForDate(date);
     if (existing) {
@@ -63,26 +70,48 @@ async function generate(req: NextRequest) {
     return NextResponse.json({ error: "no athlete profile" }, { status: 500 });
   }
 
-  const schedule = await getScheduleForDay(todayDayOfWeek());
-  if (!schedule) {
-    return NextResponse.json({ error: "no schedule for today — seed workout_schedule" }, { status: 400 });
-  }
-
-  if (schedule.template_tags.includes("rest")) {
+  const plannedToday = await getPlannedItems(date);
+  if (plannedToday.length === 0) {
     const rec = {
       date,
       template_id: null,
-      prescribed: { rest: true, note: "Rest day per schedule. Prioritize sleep and mobility." },
-      reasoning: "Scheduled rest day.",
+      prescribed: { rest: true, note: "No workout scheduled. Rest day." },
+      reasoning: "Nothing planned for today.",
     };
     await upsertRecommendation(rec);
     revalidatePath("/my-coach");
     return NextResponse.json({ recommendation: rec, cached: false });
   }
 
-  const candidates = await getTemplatesByTags(schedule.template_tags, schedule.sport ?? undefined);
+  // Pick the first runnable item (one with template tags). Fixed/rest items
+  // are displayed alongside but don't drive prescription generation.
+  const runnable: PlannedItem | undefined = plannedToday.find(
+    (i) => i.template_tags.length > 0 && !i.is_fixed && !i.is_rest,
+  );
+  const fixedItems = plannedToday.filter((i) => i.is_fixed || i.is_rest);
+
+  if (!runnable) {
+    const rec = {
+      date,
+      template_id: null,
+      prescribed: {
+        rest: true,
+        note: fixedItems.map((i) => i.notes).filter(Boolean).join(" + ") || "Rest day.",
+        fixed_items: fixedItems.map((i) => ({ sport: i.sport, notes: i.notes, is_fixed: i.is_fixed, is_rest: i.is_rest })),
+      },
+      reasoning: "No structured workout scheduled today; cross-training or rest only.",
+    };
+    await upsertRecommendation(rec);
+    revalidatePath("/my-coach");
+    return NextResponse.json({ recommendation: rec, cached: false });
+  }
+
+  const candidates = await getTemplatesByTags(runnable.template_tags, runnable.sport ?? undefined);
   if (candidates.length === 0) {
-    return NextResponse.json({ error: `no templates match tags ${schedule.template_tags.join(",")}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `no templates match tags ${runnable.template_tags.join(",")}` },
+      { status: 400 },
+    );
   }
 
   const recent = await getRecentActivityRows(30);
@@ -109,17 +138,26 @@ async function generate(req: NextRequest) {
     ftp: profile.ftp,
     threshold_hr: profile.threshold_hr,
     threshold_pace_s_per_km: profile.threshold_pace_s_per_km,
+    fitness_goal: profile.fitness_goal,
     hr_zones: zones,
   };
 
   const candidateSummaries = candidates.map((t) => summarizeTemplate(t, profileForLLM));
 
-  const sys = `You are a personal endurance coach. Given today's scheduled workout tags, candidate workout templates, and the athlete's recent training, produce a single concrete prescription for today.
+  const sys = `You are a personal endurance coach. Given today's scheduled workout tags, candidate workout templates, the athlete's fitness goal, and their recent training, produce a single concrete prescription for today.
 
 Rules:
 - Pick exactly ONE template from candidates.
-- Resolve every "target" string in the template (e.g. "z2", "tempo", "vo2_pace") to specific HR ranges or paces using the athlete's profile.
+- Anchor every prescription to the athlete's fitness_goal. If the goal is a target race time, derive the implied goal pace and use it as the reference point for tempo/threshold/race-pace work. Compare recent workout paces, HRs, and TSS to that goal pace to gauge readiness, and bias intensity accordingly: if recent comparable efforts were slower than goal pace at high HR, slightly back off; if comfortably under goal pace, hold or push.
+- Preserve template structure faithfully. If a template has reps with sub_segments (warmup, strides, intervals), expand them into a flat segment list in the prescription, keeping the rep count and per-rep durations intact.
+- For each segment, the "target" string from the template can be:
+  (a) a recognized zone label (easy, z2, tempo, threshold_pace, 5k_pace, vo2_pace, ftp, sweet_spot, etc.) — resolve to numeric ranges using the athlete profile.
+  (b) a literal pace like "8:45/mi" or "5:30/km" — preserve as the target string and emit the matching pace_range_per_mi_s OR pace_range_per_km_s field.
+  (c) a literal HR cap or range like "<155bpm" or "150-160bpm" — preserve as target and emit hr_range.
+  (d) an effort label like "85-90% max" or "walk" — preserve as target string; emit hr_range only if confidently derivable.
+- This athlete prefers pace in /mi. Prefer pace_range_per_mi_s for runs unless the template explicitly uses /km.
 - Scale durations and intensities based on recent fitness (CTL/ATL/TSB) and how recent comparable workouts went. Hard intervals shorter if athlete is fatigued (TSB < -15). Slightly longer if fresh (TSB > 5).
+- The reasoning field MUST cite (i) the fitness goal, (ii) one or two specific recent comparable workouts (date, pace, HR), and (iii) the resulting prescription decision. 3-5 sentences.
 - Output STRICT JSON. No prose outside JSON.
 
 Output schema:
@@ -128,9 +166,22 @@ Output schema:
   "prescribed": {
     "name": "<template name>",
     "sport": "<run|ride|swim>",
-    "total_duration_min": <number>,
+    "total_duration_min": <number | null>,
     "segments": [
-      { "phase": "warmup|main|cooldown|interval|rest", "duration_min": <number>, "target": "<label>", "hr_range": [lo,hi] | null, "pace_range_per_km_s": [lo,hi] | null, "power_range_w": [lo,hi] | null, "reps": <int|null>, "notes": "<short>" }
+      {
+        "phase": "<warmup|main|cooldown|interval|rest|set|rep|strides|jog|walk|recovery|tempo1|tempo2|hmp|fivek|threshold|vo2|... — any descriptive label>",
+        "duration_min": <number | null>,
+        "duration_s": <number | null>,
+        "distance_mi": <number | null>,
+        "distance_km": <number | null>,
+        "target": "<original label or literal>",
+        "hr_range": [lo, hi] | null,
+        "pace_range_per_mi_s": [lo, hi] | null,
+        "pace_range_per_km_s": [lo, hi] | null,
+        "power_range_w": [lo, hi] | null,
+        "reps": <int | null>,
+        "notes": "<short>"
+      }
     ]
   },
   "reasoning": "<2-4 sentences citing fitness state and last similar workout>"
@@ -139,7 +190,17 @@ Output schema:
   const userMessage = JSON.stringify({
     today: date,
     day_of_week: todayDayOfWeek(),
-    schedule,
+    planned_today: plannedToday.map((i) => ({
+      template_tags: i.template_tags,
+      sport: i.sport,
+      notes: i.notes,
+      is_fixed: i.is_fixed,
+      is_rest: i.is_rest,
+    })),
+    runnable_item: {
+      template_tags: runnable.template_tags,
+      sport: runnable.sport,
+    },
     fitness,
     profile: profileForLLM,
     candidates: candidateSummaries,

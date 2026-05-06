@@ -45,6 +45,7 @@ export interface AthleteProfile {
   resting_hr: number | null;
   threshold_hr: number | null;
   threshold_pace_s_per_km: number | null;
+  fitness_goal: string | null;
   updated_at: string;
 }
 
@@ -62,6 +63,18 @@ export interface ScheduleRow {
   template_tags: string[];
   sport: string | null;
   notes: string | null;
+  is_fixed: boolean;
+}
+
+export interface PlannedItem {
+  id: number;
+  date: string;
+  template_tags: string[];
+  sport: string | null;
+  notes: string | null;
+  is_fixed: boolean;
+  is_rest: boolean;
+  position: number;
 }
 
 export interface RecommendationRow {
@@ -121,6 +134,62 @@ export async function getTemplatesByTags(tags: string[], sport?: string): Promis
 export async function getScheduleForDay(dayOfWeek: number): Promise<ScheduleRow | null> {
   const rows = (await sql`select * from workout_schedule where day_of_week = ${dayOfWeek}`) as ScheduleRow[];
   return rows[0] ?? null;
+}
+
+export async function getAllWeeklySchedule(): Promise<ScheduleRow[]> {
+  const rows = (await sql`select * from workout_schedule order by day_of_week`) as ScheduleRow[];
+  return rows;
+}
+
+export async function getPlannedItems(date: string): Promise<PlannedItem[]> {
+  const rows = (await sql`
+    select * from workout_planned_items
+    where date = ${date}
+    order by position, id
+  `) as PlannedItem[];
+  return rows;
+}
+
+export async function getPlannedItemsRange(from: string, to: string): Promise<PlannedItem[]> {
+  const rows = (await sql`
+    select * from workout_planned_items
+    where date between ${from} and ${to}
+    order by date, position, id
+  `) as PlannedItem[];
+  return rows;
+}
+
+export async function isDateMaterialized(date: string): Promise<boolean> {
+  const rows = (await sql`select 1 from workout_planned_dates where date = ${date}`) as { "?column?": number }[];
+  return rows.length > 0;
+}
+
+export async function materializeDate(
+  date: string,
+  items: Array<{
+    template_tags: string[];
+    sport: string | null;
+    notes: string | null;
+    is_fixed: boolean;
+    is_rest: boolean;
+  }>,
+) {
+  await sql`insert into workout_planned_dates (date) values (${date}) on conflict do nothing`;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    await sql`
+      insert into workout_planned_items (date, template_tags, sport, notes, is_fixed, is_rest, position)
+      values (${date}, ${it.template_tags}, ${it.sport}, ${it.notes}, ${it.is_fixed}, ${it.is_rest}, ${i})
+    `;
+  }
+}
+
+export async function moveItem(itemId: number, newDate: string) {
+  await sql`update workout_planned_items set date = ${newDate} where id = ${itemId}`;
+}
+
+export async function deleteRecommendation(date: string) {
+  await sql`delete from workout_recommendations where date = ${date}`;
 }
 
 export async function getRecommendationForDate(date: string): Promise<RecommendationRow | null> {

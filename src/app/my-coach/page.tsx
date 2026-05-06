@@ -1,11 +1,11 @@
 import { Metadata } from "next";
 import {
   getAthleteProfile,
-  getScheduleForDay,
   getRecommendationForDate,
   sql,
   type ActivityRow,
 } from "@/lib/db";
+import { isAdmin } from "@/lib/auth";
 import MyCoachContent from "./MyCoachContent";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +17,6 @@ export const metadata: Metadata = {
 
 function todayLocalDate(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function todayDayOfWeek(): number {
-  return new Date().getUTCDay();
 }
 
 interface SetupState {
@@ -44,27 +40,23 @@ async function checkSetup(): Promise<SetupState> {
 }
 
 export default async function MyCoachPage() {
-  const setup = await checkSetup();
+  const [setup, admin] = await Promise.all([checkSetup(), isAdmin()]);
 
   if (!setup.hasSchema) {
-    return (
-      <MyCoachContent
-        state={{ kind: "needs_db" }}
-      />
-    );
+    return <MyCoachContent state={{ kind: "needs_db" }} isAdmin={admin} />;
   }
   if (!setup.hasTemplates || !setup.hasSchedule) {
     return (
       <MyCoachContent
         state={{ kind: "needs_seed", hasTemplates: setup.hasTemplates, hasSchedule: setup.hasSchedule }}
+        isAdmin={admin}
       />
     );
   }
 
   const date = todayLocalDate();
-  const [profile, schedule, rec] = await Promise.all([
+  const [profile, rec] = await Promise.all([
     getAthleteProfile(),
-    getScheduleForDay(todayDayOfWeek()),
     getRecommendationForDate(date),
   ]);
 
@@ -80,10 +72,10 @@ export default async function MyCoachPage() {
         kind: "ready",
         date,
         profile,
-        schedule,
         recommendation: rec,
         completed,
       }}
+      isAdmin={admin}
     />
   );
 }
