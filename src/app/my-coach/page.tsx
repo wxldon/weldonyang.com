@@ -6,6 +6,7 @@ import {
   type ActivityRow,
 } from "@/lib/db";
 import { isAdmin } from "@/lib/auth";
+import { todayLocalDate } from "@/lib/dates";
 import MyCoachContent from "./MyCoachContent";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +15,6 @@ export const metadata: Metadata = {
   title: "My Coach — Weldon Yang",
   description: "Today's prescribed workout, tailored to recent training.",
 };
-
-function todayLocalDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 interface SetupState {
   hasSchema: boolean;

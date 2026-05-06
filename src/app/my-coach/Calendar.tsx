@@ -32,15 +32,16 @@ interface CalendarDay {
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function startOfWeekUTC(d: Date): Date {
-  const out = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const dow = out.getUTCDay();
-  out.setUTCDate(out.getUTCDate() - dow);
-  return out;
+function dayOfWeekFromStr(dateStr: string): number {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-function fmtISO(d: Date): string {
-  return d.toISOString().slice(0, 10);
+function addDaysStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
 }
 
 export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: string }) {
@@ -50,11 +51,9 @@ export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: 
   const [dragId, setDragId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
-  const start = startOfWeekUTC(new Date());
-  const from = fmtISO(start);
-  const endDate = new Date(start);
-  endDate.setUTCDate(endDate.getUTCDate() + 13);
-  const to = fmtISO(endDate);
+  const dow = dayOfWeekFromStr(today);
+  const from = addDaysStr(today, -dow);
+  const to = addDaysStr(from, 13);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +113,7 @@ export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: 
               <DayCell
                 key={day.date}
                 day={day}
+                today={today}
                 isToday={day.date === today}
                 isAdmin={isAdmin}
                 isDropTarget={dropTarget === day.date}
@@ -146,6 +146,7 @@ export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: 
 
 function DayCell({
   day,
+  today,
   isToday,
   isAdmin,
   isDropTarget,
@@ -156,6 +157,7 @@ function DayCell({
   onDrop,
 }: {
   day: CalendarDay;
+  today: string;
   isToday: boolean;
   isAdmin: boolean;
   isDropTarget: boolean;
@@ -166,7 +168,7 @@ function DayCell({
   onDrop: (e: React.DragEvent) => void;
 }) {
   const dateNum = parseInt(day.date.slice(8, 10), 10);
-  const isPast = day.date < new Date().toISOString().slice(0, 10);
+  const isPast = day.date < today;
 
   return (
     <div

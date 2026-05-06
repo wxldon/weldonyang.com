@@ -13,6 +13,7 @@ import {
   type PlannedItem,
 } from "@/lib/db";
 import { isAdminFromRequest } from "@/lib/auth";
+import { todayLocalDate, todayDayOfWeek } from "@/lib/dates";
 import {
   computeFitnessLoad,
   estimateMaxHR,
@@ -22,14 +23,6 @@ import {
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-function todayLocalDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function todayDayOfWeek(): number {
-  return new Date().getUTCDay();
-}
 
 function summarizeTemplate(t: WorkoutTemplate, profile: { max_hr: number | null; ftp: number | null; threshold_pace_s_per_km: number | null }) {
   const resolved = JSON.stringify(t.structure, null, 2);

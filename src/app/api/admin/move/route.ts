@@ -7,12 +7,9 @@ import {
   type PlannedItem,
 } from "@/lib/db";
 import { isAdminFromRequest, unauthorized } from "@/lib/auth";
+import { todayLocalDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
-
-function todayDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export async function POST(req: NextRequest) {
   if (!isAdminFromRequest(req)) return unauthorized();
@@ -33,7 +30,7 @@ export async function POST(req: NextRequest) {
   const oldDate = original.date;
   await moveItem(item_id, new_date);
 
-  const today = todayDate();
+  const today = todayLocalDate();
   if (oldDate === today || new_date === today) {
     await deleteRecommendation(today);
   }
