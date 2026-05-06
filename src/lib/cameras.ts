@@ -2,6 +2,8 @@
 // Public source: cameras.alertcalifornia.org (UC San Diego). See terms at
 // https://alertcalifornia.org/terms-of-use/
 
+import { unstable_cache } from "next/cache";
+
 const ALL_CAMERAS_URL =
   "https://cameras.alertcalifornia.org/public-camera-data/all_cameras-v3.json";
 
@@ -62,8 +64,11 @@ function haversineMi(aLat: number, aLng: number, bLat: number, bLng: number): nu
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-export async function getNearbyFireCameras(): Promise<Camera[]> {
-  const res = await fetch(ALL_CAMERAS_URL, { next: { revalidate: 300 } });
+async function fetchAndFilter(): Promise<Camera[]> {
+  // Per-fetch data cache rejects this body (>2MB Next.js limit), so keep
+  // it uncached here; unstable_cache around the parsed result holds the
+  // small Camera[] instead.
+  const res = await fetch(ALL_CAMERAS_URL, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`alertcalifornia camera list ${res.status}`);
   }
@@ -100,5 +105,11 @@ export async function getNearbyFireCameras(): Promise<Camera[]> {
   cameras.sort((a, b) => a.distanceMi - b.distanceMi);
   return cameras;
 }
+
+export const getNearbyFireCameras = unstable_cache(
+  fetchAndFilter,
+  ["alertca-cameras-sf-75mi"],
+  { revalidate: 300 },
+);
 
 export const SCOUT_CENTER = { lat: SF_LAT, lng: SF_LNG, radiusMi: RADIUS_MI };

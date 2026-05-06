@@ -1,5 +1,9 @@
 import { Metadata } from "next";
 import { getNearbyFireCameras, SCOUT_CENTER } from "@/lib/cameras";
+import { getNearbyWindStations, getSpotWinds, type WindStation, type WindSpot } from "@/lib/wind";
+import { getNearbyBuoyCams, type BuoyCam } from "@/lib/buoy-cams";
+import { DESTINATION_CAMS } from "@/lib/destination-cams";
+import { getWeatherSummary, type WeatherSummary } from "@/lib/weather";
 import BikingScoutingContent from "./BikingScoutingContent";
 
 export const revalidate = 300;
@@ -7,7 +11,7 @@ export const revalidate = 300;
 export const metadata: Metadata = {
   title: "Biking Scouting Report — Weldon Yang",
   description:
-    "Live fire-watch tower cameras within 75 miles of San Francisco — quick visibility check before a ride.",
+    "Live fire-watch tower cameras and wind readings within 75 miles of San Francisco — quick conditions check before a ride.",
 };
 
 export default async function BikingScoutingPage() {
@@ -33,5 +37,27 @@ export default async function BikingScoutingPage() {
     );
   }
 
-  return <BikingScoutingContent cameras={cameras} center={SCOUT_CENTER} />;
+  const [winds, spotWinds, buoys, weather]: [
+    WindStation[],
+    WindSpot[],
+    BuoyCam[],
+    WeatherSummary | null,
+  ] = await Promise.all([
+    getNearbyWindStations().catch(() => [] as WindStation[]),
+    getSpotWinds().catch(() => [] as WindSpot[]),
+    getNearbyBuoyCams().catch(() => [] as BuoyCam[]),
+    getWeatherSummary().catch(() => null),
+  ]);
+
+  return (
+    <BikingScoutingContent
+      cameras={cameras}
+      winds={winds}
+      spotWinds={spotWinds}
+      buoys={buoys}
+      destinations={DESTINATION_CAMS}
+      weather={weather}
+      center={SCOUT_CENTER}
+    />
+  );
 }

@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Camera } from "@/lib/cameras";
+import type { WindStation, WindSpot } from "@/lib/wind";
+import type { BuoyCam } from "@/lib/buoy-cams";
+import type { DestinationCam } from "@/lib/destination-cams";
+import type { WeatherSummary } from "@/lib/weather";
+
+const ScoutingMap = dynamic(() => import("./ScoutingMap"), { ssr: false });
 
 const REFRESH_MS = 30_000;
 
@@ -73,17 +80,7 @@ function CameraTile({
   );
 }
 
-function CameraDetail({
-  camera,
-  bust,
-  now,
-  onClose,
-}: {
-  camera: Camera;
-  bust: number;
-  now: number;
-  onClose: () => void;
-}) {
+function useEscapeAndScrollLock(onClose: () => void) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -95,6 +92,63 @@ function CameraDetail({
       document.body.style.overflow = "";
     };
   }, [onClose]);
+}
+
+function BuoyDetail({
+  buoy,
+  bust,
+  onClose,
+}: {
+  buoy: BuoyCam;
+  bust: number;
+  onClose: () => void;
+}) {
+  useEscapeAndScrollLock(onClose);
+  return (
+    <div className="bsr-modal" onClick={onClose}>
+      <div className="bsr-modal-card bsr-modal-card--wide" onClick={(e) => e.stopPropagation()}>
+        <button className="bsr-modal-close" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+        <div className="bsr-buoy-strip">
+          <img
+            className="bsr-buoy-img"
+            src={`${buoy.imageUrl}&ts=${bust}`}
+            alt={`${buoy.shortName} buoy panorama`}
+          />
+        </div>
+        <div className="bsr-modal-info">
+          <h3 className="bsr-modal-title">{buoy.shortName}</h3>
+          <p className="bsr-modal-sub">
+            NDBC station {buoy.id} · {buoy.distanceMi.toFixed(0)} mi from SF
+          </p>
+          <p className="bsr-modal-ts">360° panorama · refreshes ~hourly</p>
+          <a
+            className="bsr-modal-link"
+            href={buoy.stationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open station data on ndbc.noaa.gov →
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CameraDetail({
+  camera,
+  bust,
+  now,
+  onClose,
+}: {
+  camera: Camera;
+  bust: number;
+  now: number;
+  onClose: () => void;
+}) {
+  useEscapeAndScrollLock(onClose);
 
   return (
     <div className="bsr-modal" onClick={onClose}>
@@ -132,22 +186,43 @@ function CameraDetail({
 }
 
 export default function BikingScoutingContent({
-  cameras,
+  cameras: initialCameras,
+  winds,
+  spotWinds,
+  buoys,
+  destinations,
+  weather,
   center,
 }: {
   cameras: Camera[];
+  winds: WindStation[];
+  spotWinds: WindSpot[];
+  buoys: BuoyCam[];
+  destinations: DestinationCam[];
+  weather: WeatherSummary | null;
   center: { lat: number; lng: number; radiusMi: number };
 }) {
+  const [cameras, setCameras] = useState(initialCameras);
   const [now, setNow] = useState(() => Date.now());
   const [bust, setBust] = useState(() => Math.floor(Date.now() / 1000));
   const [selected, setSelected] = useState<Camera | null>(null);
+  const [selectedBuoy, setSelectedBuoy] = useState<BuoyCam | null>(null);
   const [query, setQuery] = useState("");
   const tickRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const tick = () => {
+    let aborted = false;
+    const tick = async () => {
       setNow(Date.now());
       setBust(Math.floor(Date.now() / 1000));
+      try {
+        const r = await fetch("/api/cameras", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = (await r.json()) as { cameras: Camera[] };
+        if (!aborted && Array.isArray(j.cameras)) setCameras(j.cameras);
+      } catch {
+        /* network blip — keep prior list */
+      }
     };
     tickRef.current = window.setInterval(tick, REFRESH_MS);
     const onVisible = () => {
@@ -155,6 +230,7 @@ export default function BikingScoutingContent({
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
+      aborted = true;
       if (tickRef.current) window.clearInterval(tickRef.current);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -174,10 +250,18 @@ export default function BikingScoutingContent({
   const freshCount = useMemo(
     () =>
       cameras.filter(
-        (c) => c.lastFrameTs && now / 1000 - c.lastFrameTs < 120,
+        (c) => c.lastFrameTs && now / 1000 - c.lastFrameTs < 180,
       ).length,
     [cameras, now],
   );
+
+  const windSummary = useMemo(() => {
+    if (winds.length === 0) return null;
+    const speeds = winds.map((w) => w.windMph);
+    const avg = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+    const peak = winds.reduce((m, w) => (w.windMph > m.windMph ? w : m), winds[0]);
+    return { avg, peak };
+  }, [winds]);
 
   return (
     <>
@@ -200,7 +284,7 @@ export default function BikingScoutingContent({
           </h1>
           <p className="bsr-subtitle">
             {cameras.length} fire-watch towers within {center.radiusMi} miles of San
-            Francisco. {freshCount} reporting in the last 2 minutes.
+            Francisco. {freshCount} updated in the last 3 minutes.
             <br />
             Look for smoke, fog, or socked-in ridges before you clip in.
           </p>
@@ -214,6 +298,122 @@ export default function BikingScoutingContent({
               className="bsr-search"
             />
           </div>
+        </section>
+
+        {weather && (
+          <section className="bsr-weather-wrap">
+            <div className="bsr-weather-card">
+              <div className="bsr-weather-now">
+                <span className="bsr-weather-emoji" aria-hidden="true">{weather.emoji}</span>
+                <div className="bsr-weather-now-text">
+                  <div className="bsr-weather-temp">
+                    {weather.tempF}°<span className="bsr-weather-feels"> · feels {weather.feelsLikeF}°</span>
+                  </div>
+                  <div className="bsr-weather-cond">{weather.conditions} in San Francisco</div>
+                </div>
+              </div>
+
+              <div className="bsr-weather-stats">
+                <div className="bsr-weather-stat">
+                  <span className="bsr-weather-stat-label">High / Low</span>
+                  <span className="bsr-weather-stat-value">
+                    {weather.todayHighF}° / {weather.todayLowF}°
+                  </span>
+                </div>
+                <div className="bsr-weather-stat">
+                  <span className="bsr-weather-stat-label">Wind</span>
+                  <span className="bsr-weather-stat-value">
+                    {weather.windMph} mph
+                    {weather.gustMph > weather.windMph + 2
+                      ? <span className="bsr-weather-gust"> · gusts {weather.gustMph}</span>
+                      : null}
+                  </span>
+                </div>
+                <div className="bsr-weather-stat">
+                  <span className="bsr-weather-stat-label">Today rainfall</span>
+                  <span className="bsr-weather-stat-value">
+                    {weather.todayPrecipIn > 0 ? `${weather.todayPrecipIn.toFixed(2)}″` : "none"}
+                  </span>
+                </div>
+                <div className="bsr-weather-stat">
+                  <span className="bsr-weather-stat-label">UV peak</span>
+                  <span className="bsr-weather-stat-value">{weather.uvMax.toFixed(0)}</span>
+                </div>
+                {weather.air && (
+                  <div className="bsr-weather-stat">
+                    <span className="bsr-weather-stat-label">AQI</span>
+                    <span className="bsr-weather-stat-value">
+                      <span
+                        className="bsr-aqi-badge"
+                        style={{
+                          background: weather.air.color,
+                          boxShadow: `0 0 0 1.5px ${weather.air.color}40`,
+                        }}
+                        aria-hidden="true"
+                      />
+                      {weather.air.usAqi}
+                      <span className="bsr-aqi-cat"> {weather.air.category}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {weather.events.length > 0 && (
+                <ul className="bsr-weather-events">
+                  {weather.events.slice(0, 4).map((ev) => (
+                    <li key={ev.kind + ev.whenIso} className={`bsr-weather-event bsr-event-${ev.kind}`}>
+                      <span className="bsr-event-bullet" aria-hidden="true" />
+                      {ev.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
+        <section className="bsr-map-wrap">
+          <div className="bsr-map-header">
+            <div className="bsr-legend">
+              <span className="bsr-legend-item">
+                <span className="bsr-legend-dot bsr-legend-cam" /> {cameras.length} cameras
+              </span>
+              <span className="bsr-legend-item">
+                <span className="bsr-legend-dot bsr-legend-wind" /> {winds.length} wind stations
+              </span>
+              {spotWinds.length > 0 && (
+                <span className="bsr-legend-item">
+                  <span className="bsr-legend-dot bsr-legend-spot" /> {spotWinds.length} spot forecasts
+                </span>
+              )}
+              {buoys.length > 0 && (
+                <span className="bsr-legend-item">
+                  <span className="bsr-legend-dot bsr-legend-buoy" /> {buoys.length} ocean buoys
+                </span>
+              )}
+              {windSummary && (
+                <span className="bsr-legend-item bsr-legend-stat">
+                  avg {windSummary.avg.toFixed(0)} mph · peak {windSummary.peak.windMph} mph at{" "}
+                  {windSummary.peak.name.toLowerCase()}
+                </span>
+              )}
+            </div>
+            <div className="bsr-wind-legend">
+              <span><span className="bsr-wind-swatch" style={{ background: "#22c55e" }} /> &lt;6</span>
+              <span><span className="bsr-wind-swatch" style={{ background: "#facc15" }} /> 6–13</span>
+              <span><span className="bsr-wind-swatch" style={{ background: "#f97316" }} /> 14–21</span>
+              <span><span className="bsr-wind-swatch" style={{ background: "#ef4444" }} /> 22+</span>
+              <span className="bsr-wind-legend-note">mph</span>
+            </div>
+          </div>
+          <ScoutingMap
+            cameras={cameras}
+            winds={winds}
+            spotWinds={spotWinds}
+            buoys={buoys}
+            onSelectCamera={setSelected}
+            onSelectBuoy={setSelectedBuoy}
+          />
         </section>
 
         <section className="bsr-grid-wrap">
@@ -233,6 +433,43 @@ export default function BikingScoutingContent({
             </div>
           )}
         </section>
+
+        {destinations.length > 0 && (
+          <section className="bsr-dest-wrap">
+            <div className="bsr-dest-header">
+              <h2 className="bsr-dest-title">Destination cams</h2>
+              <p className="bsr-dest-sub">
+                Outside the 75-mile radius — National Park webcams for trip planning.
+              </p>
+            </div>
+            <div className="bsr-dest-grid">
+              {destinations.map((d) => (
+                <a
+                  key={d.id}
+                  href={d.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bsr-dest-tile"
+                >
+                  <div className="bsr-dest-img-wrap">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      className="bsr-dest-img"
+                      src={`${d.imageUrl}?ts=${bust}`}
+                      alt={`${d.park} — ${d.name}`}
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="bsr-dest-meta">
+                    <span className="bsr-dest-park">{d.park}</span>
+                    <span className="bsr-dest-name">{d.name}</span>
+                    <span className="bsr-dest-refresh">{d.refreshNote}</span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
 
         <footer className="bsr-footer">
           <p>
@@ -254,6 +491,37 @@ export default function BikingScoutingContent({
             >
               Terms
             </a>
+            {" · "}wind via{" "}
+            <a
+              href="https://mesonet.agron.iastate.edu/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bsr-credit-link"
+            >
+              Iowa State Mesonet
+            </a>
+            {" · "}weather + AQI via{" "}
+            <a
+              href="https://open-meteo.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bsr-credit-link"
+            >
+              Open-Meteo
+            </a>
+            {buoys.length > 0 && (
+              <>
+                {" · "}buoy panoramas via{" "}
+                <a
+                  href="https://www.ndbc.noaa.gov/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bsr-credit-link"
+                >
+                  NOAA NDBC
+                </a>
+              </>
+            )}
           </p>
         </footer>
 
@@ -263,6 +531,13 @@ export default function BikingScoutingContent({
             bust={bust}
             now={now}
             onClose={() => setSelected(null)}
+          />
+        )}
+        {selectedBuoy && (
+          <BuoyDetail
+            buoy={selectedBuoy}
+            bust={bust}
+            onClose={() => setSelectedBuoy(null)}
           />
         )}
       </main>
@@ -493,7 +768,7 @@ const styles = `
 .bsr-modal {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 9999;
   background: rgba(0,0,0,0.85);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -517,6 +792,20 @@ const styles = `
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+.bsr-modal-card--wide { max-width: min(1400px, 96vw); }
+.bsr-buoy-strip {
+  width: 100%;
+  background: #000;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.bsr-buoy-img {
+  display: block;
+  height: 220px;
+  width: auto;
+  max-width: none;
+  image-rendering: auto;
 }
 .bsr-modal-img {
   width: 100%;
@@ -580,10 +869,418 @@ const styles = `
   border-color: rgba(255,255,255,0.4);
 }
 
+/* ---- Destination cams ---- */
+.bsr-dest-wrap {
+  max-width: 1280px;
+  margin: 2.5rem auto 0;
+  padding: 0 1.25rem 0;
+}
+.bsr-dest-header {
+  margin-bottom: 1rem;
+}
+.bsr-dest-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.25rem;
+  color: #fff;
+}
+.bsr-dest-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.5);
+}
+.bsr-dest-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+.bsr-dest-tile {
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s ease, border-color 0.2s, background 0.2s;
+}
+.bsr-dest-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(96,165,250,0.45);
+  background: rgba(255,255,255,0.06);
+}
+.bsr-dest-img-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #111;
+  overflow: hidden;
+}
+.bsr-dest-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.bsr-dest-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.85rem 0.85rem;
+}
+.bsr-dest-park {
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+.bsr-dest-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+}
+.bsr-dest-refresh {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.4);
+  margin-top: 0.15rem;
+}
+
 @media (max-width: 600px) {
   .bsr-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.6rem; }
   .bsr-tile-meta { padding: 0.55rem 0.65rem 0.7rem; }
   .bsr-tile-name { font-size: 0.85rem; }
   .bsr-hero { padding: 3rem 1rem 1.5rem; }
+  .bsr-map { height: 380px; }
+  .bsr-buoy-img { height: 160px; }
+  .bsr-dest-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.6rem; }
+}
+
+/* ---- Weather ---- */
+.bsr-weather-wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0.5rem 1.25rem 1rem;
+}
+.bsr-weather-card {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) 1.4fr auto;
+  gap: 1.5rem;
+  align-items: center;
+  padding: 1rem 1.4rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.bsr-weather-now {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.bsr-weather-emoji {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+.bsr-weather-temp {
+  font-size: 1.8rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.bsr-weather-feels {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.45);
+  letter-spacing: 0.02em;
+}
+.bsr-weather-cond {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.6);
+}
+.bsr-weather-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.9rem;
+}
+.bsr-weather-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+.bsr-weather-stat-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+}
+.bsr-weather-stat-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.bsr-weather-gust {
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.5);
+}
+.bsr-aqi-badge {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+.bsr-aqi-cat {
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.55);
+  margin-left: 0.35rem;
+  letter-spacing: 0.01em;
+}
+.bsr-weather-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 200px;
+  border-left: 1px solid rgba(255,255,255,0.1);
+  padding-left: 1.1rem;
+}
+.bsr-weather-event {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.01em;
+}
+.bsr-event-bullet {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.5);
+  flex: 0 0 auto;
+}
+.bsr-event-rain-start .bsr-event-bullet { background: #60a5fa; }
+.bsr-event-rain-stop  .bsr-event-bullet { background: #22c55e; }
+.bsr-event-sunrise    .bsr-event-bullet { background: #fbbf24; }
+.bsr-event-sunset     .bsr-event-bullet { background: #f97316; }
+
+@media (max-width: 900px) {
+  .bsr-weather-card {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  .bsr-weather-events {
+    border-left: none;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-left: 0;
+    padding-top: 0.85rem;
+  }
+}
+@media (max-width: 600px) {
+  .bsr-weather-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---- Map ---- */
+.bsr-map-wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.25rem 1.5rem;
+}
+.bsr-map-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.25rem 0.75rem;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.02em;
+}
+.bsr-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem 1.1rem;
+  align-items: center;
+}
+.bsr-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.bsr-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+.bsr-legend-cam { background: #c4b5fd; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.4); }
+.bsr-legend-buoy { background: #38bdf8; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.4); }
+.bsr-legend-spot {
+  background: transparent;
+  border: 1.5px dashed #facc15;
+  box-shadow: none;
+  width: 10px;
+  height: 10px;
+}
+.bsr-legend-wind {
+  background: linear-gradient(90deg, #22c55e, #facc15, #f97316, #ef4444);
+}
+.bsr-legend-stat {
+  color: rgba(255,255,255,0.4);
+  text-transform: capitalize;
+}
+.bsr-wind-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.5);
+}
+.bsr-wind-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.bsr-wind-swatch {
+  width: 10px; height: 10px; border-radius: 3px;
+  display: inline-block;
+}
+.bsr-wind-legend-note { color: rgba(255,255,255,0.35); margin-left: 0.1rem; }
+
+.bsr-map {
+  width: 100%;
+  height: 520px;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #0d0d0d;
+}
+
+/* Leaflet UI tweaks for the dark theme */
+.bsr-map .leaflet-container {
+  background: #0a0a0a;
+  font-family: inherit;
+}
+.bsr-map .leaflet-control-attribution {
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.55);
+  font-size: 0.65rem;
+}
+.bsr-map .leaflet-control-attribution a {
+  color: rgba(255,255,255,0.75);
+}
+.bsr-map .leaflet-control-zoom a {
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.bsr-map .leaflet-control-zoom a:hover {
+  background: rgba(0,0,0,0.9);
+  color: #fff;
+}
+.bsr-map .leaflet-popup-content-wrapper,
+.bsr-map .leaflet-popup-tip {
+  background: #111;
+  color: #f5f5f7;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.bsr-map .leaflet-popup-content {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0.6rem 0.8rem;
+}
+.bsr-map .leaflet-popup-close-button {
+  color: rgba(255,255,255,0.5);
+}
+
+/* Camera marker (small purple dot) */
+.bsr-cam-icon { background: transparent !important; border: none !important; }
+.bsr-cam-pin {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #c4b5fd;
+  border: 1.5px solid rgba(0,0,0,0.85);
+  box-shadow: 0 0 0 1.5px rgba(196,181,253,0.4), 0 0 6px rgba(139,92,246,0.5);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.bsr-cam-pin:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 0 2px rgba(196,181,253,0.6), 0 0 12px rgba(139,92,246,0.85);
+}
+
+/* Buoy marker (cyan wave glyph) */
+.bsr-buoy-icon { background: transparent !important; border: none !important; }
+.bsr-buoy-pin {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #0ea5e9, #0369a1);
+  border: 1.5px solid rgba(255,255,255,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 0 1.5px rgba(14,165,233,0.35), 0 1px 4px rgba(0,0,0,0.5);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.bsr-buoy-pin:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 2px rgba(14,165,233,0.55), 0 0 12px rgba(14,165,233,0.7);
+}
+
+/* Wind marker (pill with arrow + mph) */
+.bsr-wind-icon { background: transparent !important; border: none !important; }
+.bsr-wind-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 2px 6px 2px 5px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.85);
+  color: var(--wind-color, #fff);
+  border: 1px solid var(--wind-color, rgba(255,255,255,0.4));
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.bsr-wind-pill:hover { filter: brightness(1.25); }
+
+/* Spot-forecast pill — distinguished by a dashed border + named label */
+.bsr-spot-icon { background: transparent !important; border: none !important; }
+.bsr-wind-pill--spot {
+  border-style: dashed;
+  border-color: var(--wind-color, #facc15);
+  background: rgba(0,0,0,0.92);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 1px 4px rgba(0,0,0,0.6);
+}
+.bsr-wind-arrow {
+  flex: 0 0 auto;
+  display: block;
+  transform-origin: 50% 50%;
+}
+.bsr-wind-mph {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.bsr-wind-calm {
+  display: inline-block;
+  width: 10px;
+  text-align: center;
+  color: var(--wind-color);
+  font-weight: 700;
 }
 `;
