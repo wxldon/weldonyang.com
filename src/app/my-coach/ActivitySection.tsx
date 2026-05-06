@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import dynamic from "next/dynamic";
 import type { ActivityRow } from "@/lib/db";
+
+const ActivityMap = dynamic(() => import("./LeafletMap"), {
+  ssr: false,
+  loading: () => (
+    <div style={{ width: "100%", height: 320, background: "rgba(255,255,255,0.04)", borderRadius: 6 }} />
+  ),
+});
 
 export interface DecimatedStreams {
   time?: number[];
@@ -420,61 +428,6 @@ function StreamsSkeleton() {
           style={{ height: h, background: "rgba(255,255,255,0.04)", borderRadius: 6 }}
         />
       ))}
-    </div>
-  );
-}
-
-function ActivityMap({ latlng }: { latlng: [number, number][] }) {
-  const W = 720;
-  const H = 280;
-  const PAD = 14;
-
-  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-  for (const [lat, lng] of latlng) {
-    if (lat < minLat) minLat = lat;
-    if (lat > maxLat) maxLat = lat;
-    if (lng < minLng) minLng = lng;
-    if (lng > maxLng) maxLng = lng;
-  }
-  if (!Number.isFinite(minLat) || maxLat === minLat || maxLng === minLng) return null;
-
-  const meanLatRad = ((minLat + maxLat) / 2) * (Math.PI / 180);
-  const lngWorld = (maxLng - minLng) * Math.cos(meanLatRad);
-  const latWorld = maxLat - minLat;
-
-  const innerW = W - 2 * PAD;
-  const innerH = H - 2 * PAD;
-  const scale = Math.min(innerW / lngWorld, innerH / latWorld);
-  const usedW = lngWorld * scale;
-  const usedH = latWorld * scale;
-  const offsetX = PAD + (innerW - usedW) / 2;
-  const offsetY = PAD + (innerH - usedH) / 2;
-
-  const project = (lat: number, lng: number): [number, number] => {
-    const x = offsetX + (lng - minLng) * Math.cos(meanLatRad) * scale;
-    const y = offsetY + (maxLat - lat) * scale;
-    return [x, y];
-  };
-
-  const points = latlng
-    .map(([lat, lng]) => project(lat, lng).map((n) => n.toFixed(1)).join(","))
-    .join(" L ");
-  const d = `M ${points}`;
-
-  return (
-    <div style={{ width: "100%", overflowX: "auto" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
-        <rect x={0} y={0} width={W} height={H} fill="rgba(255,255,255,0.025)" rx={6} />
-        <path
-          d={d}
-          fill="none"
-          stroke="#8b5cf6"
-          strokeWidth={2}
-          strokeLinejoin="round"
-          strokeLinecap="round"
-          opacity={0.95}
-        />
-      </svg>
     </div>
   );
 }
