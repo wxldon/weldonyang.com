@@ -76,19 +76,40 @@ export default function Calendar({ isAdmin, today }: { isAdmin: boolean; today: 
   }, [from, to]);
 
   async function handleDrop(targetDate: string) {
-    if (dragId == null) return;
+    if (dragId == null || !days) return;
+    const movedId = dragId;
     setDropTarget(null);
     setDragId(null);
-    const res = await fetch("/api/admin/move", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ item_id: dragId, new_date: targetDate }),
+
+    const previous = days;
+    const sourceDay = days.find((d) => d.items.some((i) => i.id === movedId));
+    const item = sourceDay?.items.find((i) => i.id === movedId);
+    if (!item || sourceDay?.date === targetDate) return;
+
+    const optimistic = days.map((d) => {
+      if (d.date === sourceDay?.date) {
+        return { ...d, items: d.items.filter((i) => i.id !== movedId) };
+      }
+      if (d.date === targetDate) {
+        return { ...d, items: [...d.items, { ...item, date: targetDate }] };
+      }
+      return d;
     });
-    if (res.ok) {
-      const r = await fetch(`/api/calendar?from=${from}&to=${to}`);
-      const d = await r.json();
-      setDays(d.days);
+    setDays(optimistic);
+
+    try {
+      const res = await fetch("/api/admin/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: movedId, new_date: targetDate }),
+      });
+      if (!res.ok) {
+        setDays(previous);
+        return;
+      }
       startTransition(() => router.refresh());
+    } catch {
+      setDays(previous);
     }
   }
 
