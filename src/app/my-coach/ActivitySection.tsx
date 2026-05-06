@@ -272,6 +272,7 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 }
 
 function ZoneBars({ zones }: { zones: Record<string, number> }) {
+  const [hovered, setHovered] = useState<string | null>(null);
   const total = Object.values(zones).reduce((a, b) => a + b, 0);
   if (total === 0) return null;
   const order = ["z1", "z2", "z3", "z4", "z5"];
@@ -282,38 +283,82 @@ function ZoneBars({ zones }: { zones: Record<string, number> }) {
     return `${Math.floor(m / 60)}h ${m % 60}m`;
   };
 
+  let cum = 0;
+  const segments = order.map((z) => {
+    const v = zones[z] ?? 0;
+    const pct = (v / total) * 100;
+    const start = cum;
+    cum += pct;
+    return { z, v, pct, start };
+  });
+
+  const hoveredSeg = segments.find((s) => s.z === hovered);
+
   return (
     <div>
-      <div style={{ display: "flex", height: 14, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
-        {order.map((z) => {
-          const v = zones[z] ?? 0;
-          const pct = (v / total) * 100;
-          if (pct === 0) return null;
-          return (
-            <div
-              key={z}
-              title={`${z.toUpperCase()} · ${Math.round(pct)}% · ${fmt(v)}`}
-              style={{ width: `${pct}%`, background: ZONE_COLORS[z], cursor: "help" }}
-            />
-          );
-        })}
+      <div style={{ position: "relative", paddingTop: 26 }}>
+        {hoveredSeg && hoveredSeg.pct > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: `${Math.min(Math.max(hoveredSeg.start + hoveredSeg.pct / 2, 8), 92)}%`,
+              transform: "translateX(-50%)",
+              padding: "0.25rem 0.5rem",
+              background: "#0a0a0a",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: 4,
+              fontSize: "0.75rem",
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              color: "#fff",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+            }}
+          >
+            <span style={{ color: ZONE_COLORS[hoveredSeg.z], fontWeight: 600 }}>{hoveredSeg.z.toUpperCase()}</span>
+            <span style={{ opacity: 0.7 }}> · {Math.round(hoveredSeg.pct)}% · {fmt(hoveredSeg.v)}</span>
+          </div>
+        )}
+        <div style={{ display: "flex", height: 14, borderRadius: 4, overflow: "hidden", background: "rgba(255,255,255,0.04)" }}>
+          {segments.map(({ z, pct }) => {
+            if (pct === 0) return null;
+            return (
+              <div
+                key={z}
+                onMouseEnter={() => setHovered(z)}
+                onMouseLeave={() => setHovered((h) => (h === z ? null : h))}
+                style={{
+                  width: `${pct}%`,
+                  background: ZONE_COLORS[z],
+                  cursor: "pointer",
+                  transition: "filter 0.15s",
+                  filter: hovered && hovered !== z ? "brightness(0.6)" : "brightness(1)",
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
       <div style={{ marginTop: "0.5rem", display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "0.375rem", fontSize: "0.75rem" }}>
-        {order.map((z) => {
-          const v = zones[z] ?? 0;
-          const pct = (v / total) * 100;
-          return (
-            <div
-              key={z}
-              title={`${fmt(v)} in ${z.toUpperCase()}`}
-              style={{ display: "flex", alignItems: "center", gap: "0.375rem", cursor: "help" }}
-            >
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[z] }} />
-              <span style={{ opacity: 0.65 }}>{z.toUpperCase()}</span>
-              <span style={{ opacity: 0.85 }}>{Math.round(pct)}%</span>
-            </div>
-          );
-        })}
+        {segments.map(({ z, v, pct }) => (
+          <div
+            key={z}
+            onMouseEnter={() => setHovered(z)}
+            onMouseLeave={() => setHovered((h) => (h === z ? null : h))}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.375rem",
+              opacity: hovered && hovered !== z ? 0.4 : 1,
+              transition: "opacity 0.15s",
+            }}
+          >
+            <div style={{ width: 8, height: 8, borderRadius: 2, background: ZONE_COLORS[z] }} />
+            <span style={{ opacity: 0.65 }}>{z.toUpperCase()}</span>
+            <span style={{ opacity: 0.85 }}>{Math.round(pct)}%</span>
+            <span style={{ marginLeft: "auto", opacity: 0.45, fontVariantNumeric: "tabular-nums" }}>{fmt(v)}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
