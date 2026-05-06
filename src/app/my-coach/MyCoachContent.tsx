@@ -10,6 +10,8 @@ import type {
 } from "@/lib/db";
 import type { WeatherSummary } from "@/lib/weather";
 import Calendar from "./Calendar";
+import ActivitySection from "./ActivitySection";
+import type { ActivityWithStreams } from "./page";
 
 type State =
   | { kind: "needs_db" }
@@ -60,10 +62,12 @@ export default function MyCoachContent({
   state,
   isAdmin,
   weather,
+  activities,
 }: {
   state: State;
   isAdmin: boolean;
   weather: WeatherSummary | null;
+  activities: ActivityWithStreams[];
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -181,6 +185,21 @@ export default function MyCoachContent({
       )}
 
       <Calendar isAdmin={isAdmin} today={date} />
+
+      {activities.length > 0 && (
+        <div style={{ marginTop: "3rem" }}>
+          <h2 style={{ fontSize: "1.125rem", opacity: 0.85, marginBottom: "0.25rem" }}>Activities</h2>
+          <p style={{ fontSize: "0.8125rem", opacity: 0.5 }}>Click any ✓ on the calendar to jump to that activity.</p>
+          {activities.map((a) => (
+            <ActivitySection
+              key={a.activity.id}
+              activity={a.activity}
+              streams={a.streams}
+              localDate={a.localDate}
+            />
+          ))}
+        </div>
+      )}
 
       <div style={{ marginTop: "3rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <Link href="/" style={{ opacity: 0.5, fontSize: "0.875rem" }}>← home</Link>

@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface PlannedItem {
@@ -323,9 +322,17 @@ function DayCell({
       </div>
 
       {day.completions.map((c) => (
-        <Link
+        <a
           key={c.activity_id}
-          href={`/my-coach/activity/${c.activity_id}`}
+          href={`#activity-${c.activity_id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            const el = document.getElementById(`activity-${c.activity_id}`);
+            if (el) {
+              el.scrollIntoView({ behavior: "smooth", block: "start" });
+              history.replaceState(null, "", `#activity-${c.activity_id}`);
+            }
+          }}
           style={{
             fontSize: "0.6875rem",
             color: "#8b5cf6",
@@ -338,6 +345,7 @@ function DayCell({
             gap: "0.4375rem",
             textDecoration: "none",
             transition: "background 0.15s ease",
+            cursor: "pointer",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = "rgba(139, 92, 246, 0.20)";
@@ -351,7 +359,7 @@ function DayCell({
             <span>{c.distance_m ? `${(c.distance_m / 1609.344).toFixed(1)} mi` : c.type}</span>
             {c.moving_time_s ? <span style={{ opacity: 0.85 }}>{formatDuration(c.moving_time_s)}</span> : null}
           </span>
-        </Link>
+        </a>
       ))}
     </div>
   );

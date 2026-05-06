@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { motion } from "framer-motion";
 import type { ActivityRow } from "@/lib/db";
 
-interface DecimatedStreams {
+export interface DecimatedStreams {
   time?: number[];
   heartrate?: number[];
   watts?: number[];
@@ -25,7 +24,7 @@ const ZONE_COLORS: Record<string, string> = {
   z5: "#ef4444",
 };
 
-export default function ActivityDetailContent({
+export default function ActivitySection({
   activity,
   streams,
   localDate,
@@ -48,109 +47,106 @@ export default function ActivityDetailContent({
       : undefined;
 
   return (
-    <main style={{ minHeight: "100vh", background: "#000", color: "#fff", padding: "3rem 1.5rem" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto" }}>
-        <Link href="/my-coach" style={{ opacity: 0.5, fontSize: "0.875rem" }}>← my coach</Link>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: easing }}
-          style={{ marginTop: "1.25rem" }}
-        >
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
-            <h1 style={{ fontSize: "1.75rem", fontWeight: 500 }}>{activity.name ?? "Activity"}</h1>
-            <span style={{ opacity: 0.5, fontSize: "0.875rem" }}>
-              {localDate} · {activity.type}
-            </span>
-          </div>
-        </motion.div>
-
-        <StatsGrid
-          activity={activity}
-          distMi={distMi}
-          durSec={durSec}
-          elevFt={elevFt}
-          avgPaceSPerMi={avgPaceSPerMi}
-          isRun={isRun}
-          isRide={isRide}
-        />
-
-        {activity.time_in_zones && (
-          <Section title="Time in zones">
-            <ZoneBars zones={activity.time_in_zones} />
-          </Section>
-        )}
-
-        {streams.heartrate && streams.time && (
-          <Section title="Heart rate">
-            <LineChart
-              x={streams.time}
-              y={streams.heartrate}
-              color="#ef4444"
-              yLabel="bpm"
-              xFormatter={fmtDuration}
-              yFormatter={(v) => Math.round(v).toString()}
-            />
-          </Section>
-        )}
-
-        {paceArr && streams.time && isRun && (
-          <Section title="Pace">
-            <LineChart
-              x={streams.time}
-              y={paceArr}
-              color={purple}
-              yLabel="/mi"
-              yInverted
-              xFormatter={fmtDuration}
-              yFormatter={fmtPace}
-              clampY={[180, 1200]}
-            />
-          </Section>
-        )}
-
-        {streams.watts && streams.time && (streams.watts.some((w) => w > 0)) && (
-          <Section title="Power">
-            <LineChart
-              x={streams.time}
-              y={streams.watts}
-              color="#f97316"
-              yLabel="W"
-              xFormatter={fmtDuration}
-              yFormatter={(v) => Math.round(v).toString()}
-            />
-          </Section>
-        )}
-
-        {streams.altitude && streams.time && (
-          <Section title="Elevation">
-            <LineChart
-              x={streams.time}
-              y={streams.altitude.map((m) => m * 3.28084)}
-              color="#22c55e"
-              yLabel="ft"
-              xFormatter={fmtDuration}
-              yFormatter={(v) => Math.round(v).toString()}
-              fill
-            />
-          </Section>
-        )}
-
-        {streams.cadence && streams.time && streams.cadence.some((c) => c > 0) && (
-          <Section title={isRide ? "Cadence (rpm)" : "Cadence (spm)"}>
-            <LineChart
-              x={streams.time}
-              y={streams.cadence.map((c) => (isRun ? c * 2 : c))}
-              color="#3b82f6"
-              yLabel={isRide ? "rpm" : "spm"}
-              xFormatter={fmtDuration}
-              yFormatter={(v) => Math.round(v).toString()}
-            />
-          </Section>
-        )}
+    <section
+      id={`activity-${activity.id}`}
+      style={{
+        scrollMarginTop: "1.5rem",
+        marginTop: "2.5rem",
+        paddingTop: "1.25rem",
+        borderTop: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+        <h2 style={{ fontSize: "1.375rem", fontWeight: 500 }}>{activity.name ?? "Activity"}</h2>
+        <span style={{ opacity: 0.5, fontSize: "0.875rem" }}>
+          {localDate} · {activity.type}
+        </span>
       </div>
-    </main>
+
+      <StatsGrid
+        activity={activity}
+        distMi={distMi}
+        durSec={durSec}
+        elevFt={elevFt}
+        avgPaceSPerMi={avgPaceSPerMi}
+        isRun={isRun}
+        isRide={isRide}
+      />
+
+      {activity.time_in_zones && (
+        <Block title="Time in zones">
+          <ZoneBars zones={activity.time_in_zones} />
+        </Block>
+      )}
+
+      {streams.heartrate && streams.time && (
+        <Block title="Heart rate">
+          <LineChart
+            x={streams.time}
+            y={streams.heartrate}
+            color="#ef4444"
+            yLabel="bpm"
+            xFormatter={fmtDuration}
+            yFormatter={(v) => Math.round(v).toString()}
+          />
+        </Block>
+      )}
+
+      {paceArr && streams.time && isRun && (
+        <Block title="Pace">
+          <LineChart
+            x={streams.time}
+            y={paceArr}
+            color={purple}
+            yLabel="/mi"
+            yInverted
+            xFormatter={fmtDuration}
+            yFormatter={fmtPace}
+            clampY={[180, 1200]}
+          />
+        </Block>
+      )}
+
+      {streams.watts && streams.time && streams.watts.some((w) => w > 0) && (
+        <Block title="Power">
+          <LineChart
+            x={streams.time}
+            y={streams.watts}
+            color="#f97316"
+            yLabel="W"
+            xFormatter={fmtDuration}
+            yFormatter={(v) => Math.round(v).toString()}
+          />
+        </Block>
+      )}
+
+      {streams.altitude && streams.time && (
+        <Block title="Elevation">
+          <LineChart
+            x={streams.time}
+            y={streams.altitude.map((m) => m * 3.28084)}
+            color="#22c55e"
+            yLabel="ft"
+            xFormatter={fmtDuration}
+            yFormatter={(v) => Math.round(v).toString()}
+            fill
+          />
+        </Block>
+      )}
+
+      {streams.cadence && streams.time && streams.cadence.some((c) => c > 0) && (
+        <Block title={isRide ? "Cadence (rpm)" : "Cadence (spm)"}>
+          <LineChart
+            x={streams.time}
+            y={streams.cadence.map((c) => (isRun ? c * 2 : c))}
+            color="#3b82f6"
+            yLabel={isRide ? "rpm" : "spm"}
+            xFormatter={fmtDuration}
+            yFormatter={(v) => Math.round(v).toString()}
+          />
+        </Block>
+      )}
+    </section>
   );
 }
 
@@ -188,11 +184,12 @@ function StatsGrid({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.05, ease: easing }}
+      initial={{ opacity: 0, y: 6 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.35, ease: easing }}
       style={{
-        marginTop: "1.5rem",
+        marginTop: "1rem",
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
         gap: "0.5rem",
@@ -219,19 +216,20 @@ function StatsGrid({
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.1, ease: easing }}
-      style={{ marginTop: "2rem" }}
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.35, ease: easing }}
+      style={{ marginTop: "1.5rem" }}
     >
-      <h2 style={{ fontSize: "0.875rem", opacity: 0.7, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.625rem" }}>
+      <h3 style={{ fontSize: "0.75rem", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "0.5rem" }}>
         {title}
-      </h2>
+      </h3>
       {children}
-    </motion.section>
+    </motion.div>
   );
 }
 
