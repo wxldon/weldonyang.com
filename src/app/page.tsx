@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, LayoutGroup, AnimatePresence } from "framer-motion";
 import ScrambleText from "@/components/ScrambleText";
 import LiveAge from "@/components/LiveAge";
@@ -23,6 +23,96 @@ const FALLBACK_LINKS: { href: string; label: string }[] = [
   { href: "/biking-scouting-report", label: "biking scouting report" },
   { href: "https://github.com/wxldon", label: "github" },
 ];
+
+/* macOS-style terminal that types `ls` out and reveals four folders.
+ * Used for the coding-portfolio section instead of the SVG frame box. */
+function CodingTerminal() {
+  const command = "ls";
+  const [typed, setTyped] = useState(0);
+  const [showResult, setShowResult] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
+    // Brief pause so the prompt is readable before the typing kicks off.
+    timeouts.push(
+      setTimeout(() => {
+        let i = 0;
+        const tick = () => {
+          if (cancelled) return;
+          i++;
+          setTyped(i);
+          if (i < command.length) {
+            timeouts.push(setTimeout(tick, 130));
+          } else {
+            timeouts.push(
+              setTimeout(() => {
+                if (!cancelled) setShowResult(true);
+              }, 350),
+            );
+          }
+        };
+        tick();
+      }, 500),
+    );
+
+    return () => {
+      cancelled = true;
+      for (const t of timeouts) clearTimeout(t);
+    };
+  }, []);
+
+  const Prompt = () => (
+    <span className="t-prompt">
+      <span className="t-host">weldon@Macbook-Pro</span>{" "}
+      <span className="t-path">/Users/weldon</span>{" "}
+      <span className="t-sigil">%</span>{" "}
+    </span>
+  );
+
+  return (
+    <div className="terminal" role="presentation">
+      <div className="terminal-titlebar">
+        <span className="t-dot t-dot--red" aria-hidden="true" />
+        <span className="t-dot t-dot--yellow" aria-hidden="true" />
+        <span className="t-dot t-dot--green" aria-hidden="true" />
+        <span className="t-title">weldon — -zsh — 80×24</span>
+      </div>
+      <div className="terminal-body">
+        <div className="t-line">
+          <Prompt />
+          <span className="t-input">{command.slice(0, typed)}</span>
+          {!showResult && <span className="t-cursor" aria-hidden="true" />}
+        </div>
+        {showResult && (
+          <>
+            <motion.div
+              className="t-line t-ls"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <span className="t-dir">swift</span>
+              <span className="t-dir">C</span>
+              <span className="t-dir">python</span>
+              <span className="t-dir">java</span>
+            </motion.div>
+            <motion.div
+              className="t-line"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.25, delay: 0.12 }}
+            >
+              <Prompt />
+              <span className="t-cursor" aria-hidden="true" />
+            </motion.div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /* SVG frame that draws around the active panel.
  * Two paths start at top-center and trace opposite halves of a rectangle,
@@ -163,14 +253,28 @@ export default function Home() {
               <div
                 className="panel-wrap"
                 style={{
-                  height: active ? "clamp(220px, 36vh, 320px)" : 0,
+                  height: active ? "clamp(240px, 38vh, 340px)" : 0,
                   marginTop: active ? "2.25rem" : 0,
                   pointerEvents: active ? "auto" : "none",
                 }}
               >
-                <PanelFrame color={activeColor} drawn={active !== null} />
+                <PanelFrame
+                  color={activeColor}
+                  drawn={active !== null && active !== "coding"}
+                />
                 <AnimatePresence mode="wait">
-                  {active && (
+                  {active === "coding" ? (
+                    <motion.div
+                      key="coding-terminal"
+                      className="panel-body terminal-stage"
+                      initial={{ opacity: 0, scale: 0.97 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.97 }}
+                      transition={{ duration: 0.35, ease: easing }}
+                    >
+                      <CodingTerminal />
+                    </motion.div>
+                  ) : active ? (
                     <motion.div
                       key={active}
                       className="panel-body"
@@ -191,7 +295,7 @@ export default function Home() {
                         <span className="panel-cursor" style={{ background: activeColor }} />
                       </p>
                     </motion.div>
-                  )}
+                  ) : null}
                 </AnimatePresence>
               </div>
 
@@ -345,6 +449,101 @@ export default function Home() {
           animation: blink 1.1s steps(2, end) infinite;
         }
         @keyframes blink {
+          50% { opacity: 0; }
+        }
+
+        /* ---- Coding terminal ---- */
+        .terminal-stage {
+          padding: 0;
+          align-items: stretch;
+          justify-content: stretch;
+        }
+        .terminal {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          background: #1d1d1d;
+          border-radius: 10px;
+          overflow: hidden;
+          box-shadow:
+            0 0 0 1px rgba(255, 255, 255, 0.06),
+            0 18px 40px -20px rgba(0, 0, 0, 0.7);
+          font-family: 'SF Mono', Menlo, Monaco, 'Cascadia Code',
+            'Roboto Mono', Consolas, monospace;
+        }
+        .terminal-titlebar {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.55rem 0.85rem;
+          background: linear-gradient(180deg, #3a3a3c 0%, #2c2c2e 100%);
+          border-bottom: 1px solid rgba(0, 0, 0, 0.4);
+          position: relative;
+        }
+        .t-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 999px;
+          display: inline-block;
+          flex: 0 0 auto;
+          box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25);
+        }
+        .t-dot--red    { background: #ff5f57; }
+        .t-dot--yellow { background: #febc2e; }
+        .t-dot--green  { background: #28c941; }
+        .t-title {
+          position: absolute;
+          left: 50%;
+          transform: translateX(-50%);
+          font-size: 0.72rem;
+          color: rgba(255, 255, 255, 0.55);
+          letter-spacing: 0.02em;
+          font-family: inherit;
+          white-space: nowrap;
+          pointer-events: none;
+        }
+        .terminal-body {
+          flex: 1;
+          padding: 0.85rem 1rem 1rem;
+          font-size: 0.85rem;
+          line-height: 1.55;
+          color: #e6e6e6;
+          overflow: auto;
+          text-align: left;
+        }
+        .t-line {
+          display: block;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        .t-prompt {
+          color: #e6e6e6;
+        }
+        .t-host  { color: #28c941; }
+        .t-path  { color: #5ec9f8; }
+        .t-sigil { color: #c4b5fd; }
+        .t-input { color: #ffffff; }
+        .t-ls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 1.25rem;
+          margin: 0.15rem 0 0.35rem;
+        }
+        .t-dir {
+          color: #6db6f5;
+          font-weight: 600;
+        }
+        .t-cursor {
+          display: inline-block;
+          width: 0.55em;
+          height: 1em;
+          background: #e6e6e6;
+          margin-left: 1px;
+          vertical-align: text-bottom;
+          animation: t-blink 1s steps(2, end) infinite;
+        }
+        @keyframes t-blink {
           50% { opacity: 0; }
         }
 
