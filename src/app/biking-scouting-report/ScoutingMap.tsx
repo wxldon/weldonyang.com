@@ -1,7 +1,8 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import { useEffect, useRef } from "react";
+import type * as Leaflet from "leaflet";
+import { useEffect, useRef, useState } from "react";
 import type { Camera } from "@/lib/cameras";
 import type { BuoyCam } from "@/lib/buoy-cams";
 import type { WindStation, WindSpot } from "@/lib/wind";
@@ -64,6 +65,17 @@ function spotMarkerHtml(s: WindSpot): string {
   `;
 }
 
+interface MapBundle {
+  L: typeof Leaflet;
+  map: Leaflet.Map;
+  layers: {
+    cam: Leaflet.LayerGroup;
+    wind: Leaflet.LayerGroup;
+    spot: Leaflet.LayerGroup;
+    buoy: Leaflet.LayerGroup;
+  };
+}
+
 export default function ScoutingMap({
   cameras,
   winds,
@@ -82,25 +94,33 @@ export default function ScoutingMap({
   onSelectSpot: (s: WindSpot) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<unknown>(null);
+  const mapRef = useRef<MapBundle | null>(null);
+  const fittedRef = useRef(false);
+  const [ready, setReady] = useState(false);
 
+  // Keep callbacks in a ref so the marker render effect doesn't need them
+  // as deps (they change identity on every parent render).
+  const cbRef = useRef({ onSelectCamera, onSelectBuoy, onSelectSpot });
+  cbRef.current = { onSelectCamera, onSelectBuoy, onSelectSpot };
+
+  // ---- Map init: runs once on mount ----
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
     let cancelled = false;
-
     (async () => {
       const L = (await import("leaflet")).default;
-      if (cancelled || !containerRef.current) return;
+      const el = containerRef.current;
+      if (cancelled || !el) return;
+      // Strict-mode double-mount guard: skip if Leaflet already attached.
+      const elWithLeaflet = el as HTMLDivElement & { _leaflet_id?: number };
+      if (elWithLeaflet._leaflet_id != null) return;
 
-      const map = L.map(containerRef.current, {
+      const map = L.map(el, {
         center: SF_CENTER,
         zoom: 9,
         zoomControl: true,
         attributionControl: true,
         scrollWheelZoom: false,
       });
-      mapRef.current = map;
-
       L.tileLayer(
         "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
         {
@@ -111,67 +131,105 @@ export default function ScoutingMap({
         },
       ).addTo(map);
 
-      const buoyLayer = L.layerGroup().addTo(map);
-      for (const b of buoys) {
-        const icon = L.divIcon({
-          className: "bsr-buoy-icon",
-          html: buoyMarkerHtml(b),
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
-        });
-        const marker = L.marker([b.lat, b.lng], { icon, title: b.shortName }).addTo(
-          buoyLayer,
-        );
-        marker.on("click", () => onSelectBuoy(b));
-      }
+      mapRef.current = {
+        L,
+        map,
+        layers: {
+          // Order matters — first added sits visually below.
+          buoy: L.layerGroup().addTo(map),
+          cam: L.layerGroup().addTo(map),
+          wind: L.layerGroup().addTo(map),
+          spot: L.layerGroup().addTo(map),
+        },
+      };
+      setReady(true);
+    })();
 
-      const camLayer = L.layerGroup().addTo(map);
-      for (const c of cameras) {
-        const icon = L.divIcon({
-          className: "bsr-cam-icon",
-          html: cameraMarkerHtml(),
-          iconSize: [12, 12],
-          iconAnchor: [6, 6],
-        });
-        const marker = L.marker([c.lat, c.lng], { icon, title: c.name }).addTo(camLayer);
-        marker.on("click", () => onSelectCamera(c));
+    return () => {
+      cancelled = true;
+      const bundle = mapRef.current;
+      mapRef.current = null;
+      fittedRef.current = false;
+      if (bundle) {
+        try {
+          bundle.map.remove();
+        } catch {
+          /* leaflet sometimes throws on tear-down — safe to ignore */
+        }
       }
+      setReady(false);
+    };
+  }, []);
 
-      const windLayer = L.layerGroup().addTo(map);
-      for (const w of winds) {
-        const icon = L.divIcon({
-          className: "bsr-wind-icon",
-          html: windMarkerHtml(w),
-          iconSize: [44, 22],
-          iconAnchor: [22, 11],
-        });
-        const popup = `
-          <strong>${w.name}</strong><br/>
-          ${w.windMph} mph${w.directionLabel ? ` from ${w.directionLabel}` : ""}${
-            w.gustMph ? ` · gusts ${w.gustMph}` : ""
-          }${w.tempF != null ? ` · ${Math.round(w.tempF)}°F` : ""}
-        `;
-        L.marker([w.lat, w.lng], { icon, title: w.name })
-          .bindPopup(popup)
-          .addTo(windLayer);
-      }
+  // ---- Marker render: runs on data changes after init ----
+  useEffect(() => {
+    const bundle = mapRef.current;
+    if (!ready || !bundle) return;
+    const { L, map, layers } = bundle;
 
-      const spotLayer = L.layerGroup().addTo(map);
-      for (const s of spotWinds) {
-        const icon = L.divIcon({
-          className: "bsr-spot-icon",
-          html: spotMarkerHtml(s),
-          iconSize: [44, 22],
-          iconAnchor: [22, 11],
-        });
-        const marker = L.marker([s.lat, s.lng], {
-          icon,
-          title: s.name,
-          zIndexOffset: 200,
-        }).addTo(spotLayer);
-        marker.on("click", () => onSelectSpot(s));
-      }
+    layers.cam.clearLayers();
+    layers.wind.clearLayers();
+    layers.spot.clearLayers();
+    layers.buoy.clearLayers();
 
+    for (const b of buoys) {
+      const icon = L.divIcon({
+        className: "bsr-buoy-icon",
+        html: buoyMarkerHtml(b),
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+      const marker = L.marker([b.lat, b.lng], { icon, title: b.shortName }).addTo(layers.buoy);
+      marker.on("click", () => cbRef.current.onSelectBuoy(b));
+    }
+
+    for (const c of cameras) {
+      const icon = L.divIcon({
+        className: "bsr-cam-icon",
+        html: cameraMarkerHtml(),
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+      });
+      const marker = L.marker([c.lat, c.lng], { icon, title: c.name }).addTo(layers.cam);
+      marker.on("click", () => cbRef.current.onSelectCamera(c));
+    }
+
+    for (const w of winds) {
+      const icon = L.divIcon({
+        className: "bsr-wind-icon",
+        html: windMarkerHtml(w),
+        iconSize: [44, 22],
+        iconAnchor: [22, 11],
+      });
+      const popup = `
+        <strong>${w.name}</strong><br/>
+        ${w.windMph} mph${w.directionLabel ? ` from ${w.directionLabel}` : ""}${
+          w.gustMph ? ` · gusts ${w.gustMph}` : ""
+        }${w.tempF != null ? ` · ${Math.round(w.tempF)}°F` : ""}
+      `;
+      L.marker([w.lat, w.lng], { icon, title: w.name })
+        .bindPopup(popup)
+        .addTo(layers.wind);
+    }
+
+    for (const s of spotWinds) {
+      const icon = L.divIcon({
+        className: "bsr-spot-icon",
+        html: spotMarkerHtml(s),
+        iconSize: [44, 22],
+        iconAnchor: [22, 11],
+      });
+      const marker = L.marker([s.lat, s.lng], {
+        icon,
+        title: s.name,
+        zIndexOffset: 200,
+      }).addTo(layers.spot);
+      marker.on("click", () => cbRef.current.onSelectSpot(s));
+    }
+
+    // Fit-to-bounds only on the first paint; subsequent data refreshes
+    // shouldn't re-zoom and yank the user's view around.
+    if (!fittedRef.current) {
       const allLatLngs: [number, number][] = [
         ...cameras.map((c) => [c.lat, c.lng] as [number, number]),
         ...winds.map((w) => [w.lat, w.lng] as [number, number]),
@@ -181,16 +239,10 @@ export default function ScoutingMap({
       if (allLatLngs.length > 0) {
         map.fitBounds(L.latLngBounds(allLatLngs), { padding: [40, 40] });
         map.setZoom(map.getZoom() + 1);
+        fittedRef.current = true;
       }
-    })();
-
-    return () => {
-      cancelled = true;
-      const m = mapRef.current as { remove?: () => void } | null;
-      if (m && typeof m.remove === "function") m.remove();
-      mapRef.current = null;
-    };
-  }, [cameras, winds, spotWinds, buoys, onSelectCamera, onSelectBuoy, onSelectSpot]);
+    }
+  }, [ready, cameras, winds, spotWinds, buoys]);
 
   return <div ref={containerRef} className="bsr-map" />;
 }
