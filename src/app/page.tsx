@@ -68,8 +68,6 @@ type TermLine =
   | { id: number; kind: "options"; entries: string[] }
   | { id: number; kind: "text"; text: string; tone?: "error" | "muted" };
 
-const COMMANDS = ["cd", "clear", "echo", "help", "ls", "pwd", "whoami"] as const;
-
 function longestCommonPrefix(strs: string[]): string {
   if (strs.length === 0) return "";
   let lcp = strs[0];
@@ -252,19 +250,18 @@ function CodingTerminal() {
     const partial = current.slice(lastSpaceIdx + 1);
     const cmd = isFirstToken ? "" : current.trim().split(/\s+/)[0];
 
+    // Only complete directory arguments — bare commands don't get suggestions.
+    if (isFirstToken || (cmd !== "cd" && cmd !== "ls")) return;
+
     let candidates: string[] = [];
-    if (isFirstToken) {
-      candidates = COMMANDS.filter((c) => c.startsWith(partial));
-    } else if (cmd === "cd" || cmd === "ls") {
-      const node = lookupDir(cwdRef.current);
-      if (node) {
-        candidates = Object.keys(node.children).filter((n) => n.startsWith(partial));
-      }
-      if (cmd === "cd") {
-        for (const special of ["..", "~"]) {
-          if (special.startsWith(partial) && !candidates.includes(special)) {
-            candidates.push(special);
-          }
+    const node = lookupDir(cwdRef.current);
+    if (node) {
+      candidates = Object.keys(node.children).filter((n) => n.startsWith(partial));
+    }
+    if (cmd === "cd") {
+      for (const special of ["..", "~"]) {
+        if (special.startsWith(partial) && !candidates.includes(special)) {
+          candidates.push(special);
         }
       }
     }
@@ -273,8 +270,7 @@ function CodingTerminal() {
     if (candidates.length === 0) return;
 
     if (candidates.length === 1) {
-      const trailing = isFirstToken ? " " : "";
-      setInput(prefix + candidates[0] + trailing);
+      setInput(prefix + candidates[0]);
       return;
     }
 
