@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, LayoutGroup, AnimatePresence } from "framer-motion";
 import ScrambleText from "@/components/ScrambleText";
 import LiveAge from "@/components/LiveAge";
@@ -24,52 +24,243 @@ const FALLBACK_LINKS: { href: string; label: string }[] = [
   { href: "https://github.com/wxldon", label: "github" },
 ];
 
-/* macOS-style terminal that types `ls` out and reveals four folders.
- * Used for the coding-portfolio section instead of the SVG frame box. */
+/* ---------- Coding terminal ---------- */
+// Tiny in-memory filesystem so `ls` / `cd` / `pwd` behave plausibly.
+type FsDir = { children: Record<string, FsDir> };
+
+const HOME: string[] = ["Users", "weldon"];
+
+const FS: FsDir = {
+  children: {
+    Users: {
+      children: {
+        weldon: {
+          children: {
+            swift:  { children: {} },
+            C:      { children: {} },
+            python: { children: {} },
+            java:   { children: {} },
+          },
+        },
+      },
+    },
+  },
+};
+
+function lookupDir(path: string[]): FsDir | null {
+  let node: FsDir = FS;
+  for (const seg of path) {
+    const next = node.children[seg];
+    if (!next) return null;
+    node = next;
+  }
+  return node;
+}
+
+function pathStr(path: string[]): string {
+  if (path.length === 2 && path[0] === "Users" && path[1] === "weldon") return "~";
+  return "/" + path.join("/");
+}
+
+type TermLine =
+  | { id: number; kind: "command"; cwd: string[]; text: string }
+  | { id: number; kind: "ls"; entries: string[]; cwdAtRun: string[] }
+  | { id: number; kind: "text"; text: string; tone?: "error" | "muted" };
+
 function CodingTerminal() {
-  const command = "ls";
-  const [typed, setTyped] = useState(0);
-  const [showResult, setShowResult] = useState(false);
+  const [cwd, setCwd] = useState<string[]>(HOME);
+  const [history, setHistory] = useState<TermLine[]>([]);
+  const [input, setInput] = useState("");
+  const [autoTyping, setAutoTyping] = useState(true);
+  const [focused, setFocused] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const idCounter = useRef(0);
+  const nextId = () => ++idCounter.current;
+  const cwdRef = useRef(cwd);
+  useEffect(() => { cwdRef.current = cwd; }, [cwd]);
+  const inputRef = useRef(input);
+  useEffect(() => { inputRef.current = input; }, [input]);
+  const autoTypingRef = useRef(autoTyping);
+  useEffect(() => { autoTypingRef.current = autoTyping; }, [autoTyping]);
+  const autoTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-    // Brief pause so the prompt is readable before the typing kicks off.
-    timeouts.push(
-      setTimeout(() => {
-        let i = 0;
-        const tick = () => {
-          if (cancelled) return;
-          i++;
-          setTyped(i);
-          if (i < command.length) {
-            timeouts.push(setTimeout(tick, 130));
+  const clearAutoTimers = () => {
+    for (const t of autoTimers.current) clearTimeout(t);
+    autoTimers.current = [];
+  };
+
+  const runCommand = useCallback((rawCmd: string) => {
+    const at = cwdRef.current;
+    setHistory((h) => [
+      ...h,
+      { id: nextId(), kind: "command", cwd: at, text: rawCmd },
+    ]);
+    const trimmed = rawCmd.trim();
+    if (!trimmed) return;
+
+    const [name, ...args] = trimmed.split(/\s+/);
+
+    switch (name) {
+      case "ls": {
+        const node = lookupDir(at);
+        if (!node) return;
+        setHistory((h) => [
+          ...h,
+          { id: nextId(), kind: "ls", entries: Object.keys(node.children), cwdAtRun: at },
+        ]);
+        break;
+      }
+      case "cd": {
+        const target = args[0];
+        if (!target || target === "~") {
+          setCwd(HOME);
+        } else if (target === "..") {
+          setCwd((c) => (c.length ? c.slice(0, -1) : c));
+        } else if (target === "/") {
+          setCwd([]);
+        } else if (target === ".") {
+          // no-op
+        } else {
+          const node = lookupDir(at);
+          if (node?.children[target]) {
+            setCwd((c) => [...c, target]);
           } else {
-            timeouts.push(
-              setTimeout(() => {
-                if (!cancelled) setShowResult(true);
-              }, 350),
-            );
+            setHistory((h) => [
+              ...h,
+              {
+                id: nextId(),
+                kind: "text",
+                tone: "error",
+                text: `cd: no such file or directory: ${target}`,
+              },
+            ]);
           }
-        };
-        tick();
-      }, 500),
-    );
-
-    return () => {
-      cancelled = true;
-      for (const t of timeouts) clearTimeout(t);
-    };
+        }
+        break;
+      }
+      case "pwd": {
+        setHistory((h) => [
+          ...h,
+          { id: nextId(), kind: "text", text: "/" + at.join("/") },
+        ]);
+        break;
+      }
+      case "clear": {
+        setHistory([]);
+        break;
+      }
+      case "whoami": {
+        setHistory((h) => [
+          ...h,
+          { id: nextId(), kind: "text", text: "weldon" },
+        ]);
+        break;
+      }
+      case "echo": {
+        setHistory((h) => [
+          ...h,
+          { id: nextId(), kind: "text", text: args.join(" ") },
+        ]);
+        break;
+      }
+      case "help": {
+        setHistory((h) => [
+          ...h,
+          {
+            id: nextId(),
+            kind: "text",
+            tone: "muted",
+            text: "available: ls, cd, pwd, clear, whoami, echo, help",
+          },
+        ]);
+        break;
+      }
+      default: {
+        setHistory((h) => [
+          ...h,
+          {
+            id: nextId(),
+            kind: "text",
+            tone: "error",
+            text: `zsh: command not found: ${name}`,
+          },
+        ]);
+      }
+    }
   }, []);
 
-  const Prompt = () => (
-    <span className="t-prompt">
-      <span className="t-host">weldon@Macbook-Pro</span>{" "}
-      <span className="t-path">/Users/weldon</span>{" "}
-      <span className="t-sigil">%</span>{" "}
-    </span>
+  const startAutoType = useCallback(
+    (command: string, opts?: { initialDelayMs?: number }) => {
+      clearAutoTimers();
+      setAutoTyping(true);
+      setInput("");
+      let idx = 0;
+      const tick = () => {
+        idx++;
+        setInput(command.slice(0, idx));
+        if (idx < command.length) {
+          autoTimers.current.push(setTimeout(tick, 110));
+        } else {
+          autoTimers.current.push(
+            setTimeout(() => {
+              runCommand(command);
+              setInput("");
+              setAutoTyping(false);
+            }, 320),
+          );
+        }
+      };
+      autoTimers.current.push(setTimeout(tick, opts?.initialDelayMs ?? 50));
+    },
+    [runCommand],
   );
+
+  // First-mount intro: type out `ls` automatically.
+  useEffect(() => {
+    startAutoType("ls", { initialDelayMs: 500 });
+    return () => clearAutoTimers();
+  }, [startAutoType]);
+
+  // Keep view scrolled to the bottom as history grows.
+  useEffect(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [history, input]);
+
+  // Capture keystrokes when the terminal is focused.
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (autoTypingRef.current) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const cmd = inputRef.current;
+      runCommand(cmd);
+      setInput("");
+    } else if (e.key === "Backspace") {
+      e.preventDefault();
+      setInput((s) => s.slice(0, -1));
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+    } else if (
+      e.key.length === 1 &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      e.preventDefault();
+      setInput((s) => s + e.key);
+    } else if (e.key === "u" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      setInput("");
+    }
+  };
+
+  const onFolderClick = (name: string) => {
+    if (autoTypingRef.current) return;
+    bodyRef.current?.focus();
+    startAutoType(`cd ${name}`);
+  };
 
   return (
     <div className="terminal" role="presentation">
@@ -79,38 +270,74 @@ function CodingTerminal() {
         <span className="t-dot t-dot--green" aria-hidden="true" />
         <span className="t-title">weldon — -zsh — 80×24</span>
       </div>
-      <div className="terminal-body">
+      <div
+        className="terminal-body"
+        ref={bodyRef}
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onClick={() => bodyRef.current?.focus()}
+        autoFocus
+      >
+        {history.map((line) => {
+          if (line.kind === "command") {
+            return (
+              <div key={line.id} className="t-line">
+                <Prompt cwd={line.cwd} />
+                <span className="t-input">{line.text}</span>
+              </div>
+            );
+          }
+          if (line.kind === "ls") {
+            return (
+              <div key={line.id} className="t-line t-ls">
+                {line.entries.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className="t-dir"
+                    onClick={() => onFolderClick(name)}
+                    disabled={autoTyping}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            );
+          }
+          return (
+            <div
+              key={line.id}
+              className={`t-line ${line.tone === "error" ? "t-error" : ""} ${
+                line.tone === "muted" ? "t-muted" : ""
+              }`}
+            >
+              {line.text}
+            </div>
+          );
+        })}
+        {/* Live prompt where the user (or auto-typer) is typing */}
         <div className="t-line">
-          <Prompt />
-          <span className="t-input">{command.slice(0, typed)}</span>
-          {!showResult && <span className="t-cursor" aria-hidden="true" />}
+          <Prompt cwd={cwd} />
+          <span className="t-input">{input}</span>
+          <span
+            className={`t-cursor ${focused || autoTyping ? "" : "t-cursor--idle"}`}
+            aria-hidden="true"
+          />
         </div>
-        {showResult && (
-          <>
-            <motion.div
-              className="t-line t-ls"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
-            >
-              <span className="t-dir">swift</span>
-              <span className="t-dir">C</span>
-              <span className="t-dir">python</span>
-              <span className="t-dir">java</span>
-            </motion.div>
-            <motion.div
-              className="t-line"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.25, delay: 0.12 }}
-            >
-              <Prompt />
-              <span className="t-cursor" aria-hidden="true" />
-            </motion.div>
-          </>
-        )}
       </div>
     </div>
+  );
+}
+
+function Prompt({ cwd }: { cwd: string[] }) {
+  return (
+    <span className="t-prompt">
+      <span className="t-host">weldon@Macbook-Pro</span>{" "}
+      <span className="t-path">{pathStr(cwd)}</span>{" "}
+      <span className="t-sigil">%</span>{" "}
+    </span>
   );
 }
 
@@ -511,19 +738,24 @@ export default function Home() {
           color: #e6e6e6;
           overflow: auto;
           text-align: left;
+          outline: none;
+          caret-color: transparent;
+        }
+        .terminal-body:focus-visible {
+          box-shadow: inset 0 0 0 1px rgba(108, 181, 245, 0.18);
         }
         .t-line {
           display: block;
           white-space: pre-wrap;
           word-break: break-word;
         }
-        .t-prompt {
-          color: #e6e6e6;
-        }
-        .t-host  { color: #28c941; }
-        .t-path  { color: #5ec9f8; }
-        .t-sigil { color: #c4b5fd; }
-        .t-input { color: #ffffff; }
+        .t-prompt { color: #e6e6e6; }
+        .t-host   { color: #28c941; }
+        .t-path   { color: #5ec9f8; }
+        .t-sigil  { color: #c4b5fd; }
+        .t-input  { color: #ffffff; }
+        .t-error  { color: #ff7b7b; }
+        .t-muted  { color: rgba(255, 255, 255, 0.55); }
         .t-ls {
           display: flex;
           flex-wrap: wrap;
@@ -531,8 +763,27 @@ export default function Home() {
           margin: 0.15rem 0 0.35rem;
         }
         .t-dir {
+          background: none;
+          border: none;
+          padding: 0;
+          font: inherit;
           color: #6db6f5;
           font-weight: 600;
+          cursor: pointer;
+          letter-spacing: inherit;
+          transition: color 0.12s ease, text-shadow 0.12s ease;
+        }
+        .t-dir:hover:not(:disabled) {
+          color: #9bd1ff;
+          text-shadow: 0 0 6px rgba(109, 182, 245, 0.4);
+        }
+        .t-dir:disabled {
+          cursor: default;
+          opacity: 0.65;
+        }
+        .t-dir:focus-visible {
+          outline: 1px dotted #6db6f5;
+          outline-offset: 2px;
         }
         .t-cursor {
           display: inline-block;
@@ -542,6 +793,11 @@ export default function Home() {
           margin-left: 1px;
           vertical-align: text-bottom;
           animation: t-blink 1s steps(2, end) infinite;
+        }
+        .t-cursor--idle {
+          background: transparent;
+          outline: 1px solid rgba(230, 230, 230, 0.55);
+          animation: none;
         }
         @keyframes t-blink {
           50% { opacity: 0; }
