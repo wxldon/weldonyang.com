@@ -58,6 +58,7 @@ export default async function BikingScoutingPage() {
       destinations={DESTINATION_CAMS}
       weather={weather}
       center={SCOUT_CENTER}
+      serverNowMs={Date.now()}
     />
   );
 }

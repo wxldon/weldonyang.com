@@ -340,6 +340,7 @@ export default function BikingScoutingContent({
   destinations,
   weather,
   center,
+  serverNowMs,
 }: {
   cameras: Camera[];
   winds: WindStation[];
@@ -348,10 +349,13 @@ export default function BikingScoutingContent({
   destinations: DestinationCam[];
   weather: WeatherSummary | null;
   center: { lat: number; lng: number; radiusMi: number };
+  serverNowMs: number;
 }) {
+  // Seed from the server timestamp so SSR + first-client render match
+  // exactly. The mount effect below replaces these with the live clock.
   const [cameras, setCameras] = useState(initialCameras);
-  const [now, setNow] = useState(() => Date.now());
-  const [bust, setBust] = useState(() => Math.floor(Date.now() / 1000));
+  const [now, setNow] = useState(serverNowMs);
+  const [bust, setBust] = useState(Math.floor(serverNowMs / 1000));
   const [selected, setSelected] = useState<Camera | null>(null);
   const [selectedBuoy, setSelectedBuoy] = useState<BuoyCam | null>(null);
   const [selectedSpot, setSelectedSpot] = useState<WindSpot | null>(null);
@@ -372,6 +376,9 @@ export default function BikingScoutingContent({
         /* network blip — keep prior list */
       }
     };
+    // Fire once on mount so the SSR-frozen `now` jumps to live time
+    // (and we re-fetch any cameras that updated since the page was rendered).
+    tick();
     tickRef.current = window.setInterval(tick, REFRESH_MS);
     const onVisible = () => {
       if (document.visibilityState === "visible") tick();
