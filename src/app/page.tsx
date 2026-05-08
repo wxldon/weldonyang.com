@@ -65,7 +65,22 @@ function pathStr(path: string[]): string {
 type TermLine =
   | { id: number; kind: "command"; cwd: string[]; text: string }
   | { id: number; kind: "ls"; entries: string[]; cwdAtRun: string[] }
+  | { id: number; kind: "options"; entries: string[] }
   | { id: number; kind: "text"; text: string; tone?: "error" | "muted" };
+
+const COMMANDS = ["cd", "clear", "echo", "help", "ls", "pwd", "whoami"] as const;
+
+function longestCommonPrefix(strs: string[]): string {
+  if (strs.length === 0) return "";
+  let lcp = strs[0];
+  for (let i = 1; i < strs.length; i++) {
+    let j = 0;
+    while (j < lcp.length && j < strs[i].length && lcp[j] === strs[i][j]) j++;
+    lcp = lcp.slice(0, j);
+    if (lcp === "") break;
+  }
+  return lcp;
+}
 
 function CodingTerminal() {
   const [cwd, setCwd] = useState<string[]>(HOME);
@@ -229,6 +244,55 @@ function CodingTerminal() {
     }
   }, [history, input]);
 
+  const tabComplete = useCallback(() => {
+    const current = inputRef.current;
+    const lastSpaceIdx = current.lastIndexOf(" ");
+    const isFirstToken = lastSpaceIdx === -1;
+    const prefix = isFirstToken ? "" : current.slice(0, lastSpaceIdx + 1);
+    const partial = current.slice(lastSpaceIdx + 1);
+    const cmd = isFirstToken ? "" : current.trim().split(/\s+/)[0];
+
+    let candidates: string[] = [];
+    if (isFirstToken) {
+      candidates = COMMANDS.filter((c) => c.startsWith(partial));
+    } else if (cmd === "cd" || cmd === "ls") {
+      const node = lookupDir(cwdRef.current);
+      if (node) {
+        candidates = Object.keys(node.children).filter((n) => n.startsWith(partial));
+      }
+      if (cmd === "cd") {
+        for (const special of ["..", "~"]) {
+          if (special.startsWith(partial) && !candidates.includes(special)) {
+            candidates.push(special);
+          }
+        }
+      }
+    }
+
+    candidates.sort();
+    if (candidates.length === 0) return;
+
+    if (candidates.length === 1) {
+      const trailing = isFirstToken ? " " : "";
+      setInput(prefix + candidates[0] + trailing);
+      return;
+    }
+
+    const lcp = longestCommonPrefix(candidates);
+    if (lcp.length > partial.length) {
+      // Silent extension to the common prefix; user can hit Tab again to see options.
+      setInput(prefix + lcp);
+      return;
+    }
+
+    // Echo the in-progress line and show the options below it, then keep editing.
+    setHistory((h) => [
+      ...h,
+      { id: nextId(), kind: "command", cwd: cwdRef.current, text: current },
+      { id: nextId(), kind: "options", entries: candidates },
+    ]);
+  }, []);
+
   // Capture keystrokes when the terminal is focused.
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (autoTypingRef.current) return;
@@ -242,6 +306,7 @@ function CodingTerminal() {
       setInput((s) => s.slice(0, -1));
     } else if (e.key === "Tab") {
       e.preventDefault();
+      tabComplete();
     } else if (
       e.key.length === 1 &&
       !e.metaKey &&
@@ -302,6 +367,17 @@ function CodingTerminal() {
                   >
                     {name}
                   </button>
+                ))}
+              </div>
+            );
+          }
+          if (line.kind === "options") {
+            return (
+              <div key={line.id} className="t-line t-ls">
+                {line.entries.map((name) => (
+                  <span key={name} className="t-opt">
+                    {name}
+                  </span>
                 ))}
               </div>
             );
@@ -784,6 +860,10 @@ export default function Home() {
         .t-dir:focus-visible {
           outline: 1px dotted #6db6f5;
           outline-offset: 2px;
+        }
+        .t-opt {
+          color: rgba(230, 230, 230, 0.8);
+          font-weight: 500;
         }
         .t-cursor {
           display: inline-block;
