@@ -126,18 +126,20 @@ function CodingTerminal() {
       }
       case "cd": {
         const target = args[0];
+        let newCwd: string[] | null = null;
+
         if (!target || target === "~") {
-          setCwd(HOME);
+          newCwd = HOME;
         } else if (target === "..") {
-          setCwd((c) => (c.length ? c.slice(0, -1) : c));
+          newCwd = at.length ? at.slice(0, -1) : at;
         } else if (target === "/") {
-          setCwd([]);
+          newCwd = [];
         } else if (target === ".") {
-          // no-op
+          newCwd = at;
         } else {
           const node = lookupDir(at);
           if (node?.children[target]) {
-            setCwd((c) => [...c, target]);
+            newCwd = [...at, target];
           } else {
             setHistory((h) => [
               ...h,
@@ -146,6 +148,24 @@ function CodingTerminal() {
                 kind: "text",
                 tone: "error",
                 text: `cd: no such file or directory: ${target}`,
+              },
+            ]);
+          }
+        }
+
+        if (newCwd) {
+          setCwd(newCwd);
+          // Mirror the user's request: every successful cd lists the
+          // contents of the directory it lands in.
+          const newNode = lookupDir(newCwd);
+          if (newNode) {
+            setHistory((h) => [
+              ...h,
+              {
+                id: nextId(),
+                kind: "ls",
+                entries: Object.keys(newNode.children),
+                cwdAtRun: newCwd,
               },
             ]);
           }
