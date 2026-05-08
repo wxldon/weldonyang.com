@@ -48,7 +48,8 @@ function PanelFrame({ color, drawn }: { color: string; drawn: boolean }) {
         style={{
           strokeDasharray: 100,
           strokeDashoffset: drawn ? 0 : 100,
-          transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1)",
+          transition:
+            "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.35s ease-out",
         }}
       />
       <path
@@ -61,7 +62,8 @@ function PanelFrame({ color, drawn }: { color: string; drawn: boolean }) {
         style={{
           strokeDasharray: 100,
           strokeDashoffset: drawn ? 0 : 100,
-          transition: "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1)",
+          transition:
+            "stroke-dashoffset 0.6s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.35s ease-out",
         }}
       />
     </svg>
@@ -158,7 +160,14 @@ export default function Home() {
                 (click to view details)
               </motion.p>
 
-              <div className="panel-wrap">
+              <div
+                className="panel-wrap"
+                style={{
+                  height: active ? "clamp(220px, 36vh, 320px)" : 0,
+                  marginTop: active ? "2.25rem" : 0,
+                  pointerEvents: active ? "auto" : "none",
+                }}
+              >
                 <PanelFrame color={activeColor} drawn={active !== null} />
                 <AnimatePresence mode="wait">
                   {active && (
@@ -289,8 +298,10 @@ export default function Home() {
         .panel-wrap {
           position: relative;
           width: min(720px, calc(100vw - 3rem));
-          height: clamp(220px, 36vh, 320px);
-          margin-top: 2.25rem;
+          overflow: hidden;
+          transition:
+            height 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+            margin-top 0.55s cubic-bezier(0.22, 1, 0.36, 1);
         }
         .panel-frame {
           position: absolute;
