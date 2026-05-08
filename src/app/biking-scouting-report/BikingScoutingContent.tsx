@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { Camera } from "@/lib/cameras";
-import type { WindStation, WindSpot } from "@/lib/wind";
+import type { WindStation, WindSpot, SpotHour } from "@/lib/wind";
+import { describeCode } from "@/lib/weather";
 import type { BuoyCam } from "@/lib/buoy-cams";
 import type { DestinationCam } from "@/lib/destination-cams";
 import type { WeatherSummary } from "@/lib/weather";
@@ -92,6 +93,152 @@ function useEscapeAndScrollLock(onClose: () => void) {
       document.body.style.overflow = "";
     };
   }, [onClose]);
+}
+
+type WeatherTarget = {
+  primaryUrl: string;
+  primaryLabel: string;
+  fallbackUrl: string;
+};
+
+function weatherAppTarget(lat: number, lng: number, label: string): WeatherTarget {
+  const search = `https://www.google.com/search?q=${encodeURIComponent(
+    `weather ${label} ${lat.toFixed(3)},${lng.toFixed(3)}`,
+  )}`;
+  if (typeof navigator === "undefined") {
+    return { primaryUrl: search, primaryLabel: "Open in Google Weather", fallbackUrl: search };
+  }
+  const ua = navigator.userAgent;
+  const isAppleMobile = /iPad|iPhone|iPod/.test(ua);
+  const isMac = /Macintosh/.test(ua) && !isAppleMobile;
+  const isAndroid = /Android/.test(ua);
+  const isWindows = /Windows NT/.test(ua);
+
+  if (isAppleMobile || isMac) {
+    return {
+      primaryUrl: "weather://",
+      primaryLabel: "Open in Apple Weather",
+      fallbackUrl: search,
+    };
+  }
+  if (isWindows) {
+    return {
+      primaryUrl: "bingweather:",
+      primaryLabel: "Open in MSN Weather",
+      fallbackUrl: search,
+    };
+  }
+  if (isAndroid) {
+    return {
+      primaryUrl: search,
+      primaryLabel: "Open in Google Weather",
+      fallbackUrl: search,
+    };
+  }
+  return { primaryUrl: search, primaryLabel: "Open in Google Weather", fallbackUrl: search };
+}
+
+function fmtHourLabel(iso: string, isFirst: boolean): string {
+  const m = iso.match(/T(\d{2}):/);
+  if (!m) return iso;
+  if (isFirst) return "Now";
+  let h = parseInt(m[1], 10);
+  const ampm = h >= 12 ? "p" : "a";
+  h = h % 12 || 12;
+  return `${h}${ampm}`;
+}
+
+function HourCard({ h, isFirst }: { h: SpotHour; isFirst: boolean }) {
+  const desc = describeCode(h.weatherCode, true);
+  const arrowDeg = h.directionDeg + 180;
+  return (
+    <div className="bsr-hour-card">
+      <div className="bsr-hour-time">{fmtHourLabel(h.timeIso, isFirst)}</div>
+      <div className="bsr-hour-emoji" aria-hidden="true">{desc.emoji}</div>
+      <div className="bsr-hour-temp">{h.tempF}°</div>
+      <div className="bsr-hour-wind">
+        <svg
+          width="9"
+          height="9"
+          viewBox="0 0 10 10"
+          aria-hidden="true"
+          style={{ transform: `rotate(${arrowDeg}deg)` }}
+        >
+          <path d="M5 0 L9 8 L5 6 L1 8 Z" fill="currentColor" />
+        </svg>
+        <span>{h.windMph}</span>
+      </div>
+      {h.gustMph > h.windMph + 2 && (
+        <div className="bsr-hour-gust">g{h.gustMph}</div>
+      )}
+      {h.precipPct >= 20 && (
+        <div className="bsr-hour-precip">{h.precipPct}%</div>
+      )}
+    </div>
+  );
+}
+
+function SpotDetail({
+  spot,
+  onClose,
+}: {
+  spot: WindSpot;
+  onClose: () => void;
+}) {
+  useEscapeAndScrollLock(onClose);
+  const target = useMemo(
+    () => weatherAppTarget(spot.lat, spot.lng, spot.name),
+    [spot.lat, spot.lng, spot.name],
+  );
+
+  return (
+    <div className="bsr-modal" onClick={onClose}>
+      <div className="bsr-modal-card bsr-modal-card--spot" onClick={(e) => e.stopPropagation()}>
+        <button className="bsr-modal-close" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+
+        <div className="bsr-spot-header">
+          <div>
+            <h3 className="bsr-modal-title">{spot.name}</h3>
+            <p className="bsr-modal-sub">
+              {spot.windMph} mph
+              {spot.directionLabel ? ` from ${spot.directionLabel}` : ""}
+              {spot.gustMph ? ` · gusts ${spot.gustMph}` : ""}
+              {spot.tempF != null ? ` · ${spot.tempF}°F` : ""}
+            </p>
+            <p className="bsr-modal-ts bsr-spot-caveat">
+              Open-Meteo gridded forecast · no anemometer at this spot
+            </p>
+          </div>
+          <a
+            className="bsr-spot-app-btn"
+            href={target.primaryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              if (target.primaryUrl === target.fallbackUrl) return;
+              const fallback = target.fallbackUrl;
+              setTimeout(() => {
+                if (!document.hidden) window.open(fallback, "_blank", "noopener");
+              }, 800);
+              e.stopPropagation();
+            }}
+          >
+            {target.primaryLabel} →
+          </a>
+        </div>
+
+        <div className="bsr-hours-strip" role="list">
+          {spot.forecast24h.map((h, i) => (
+            <HourCard key={h.timeIso} h={h} isFirst={i === 0} />
+          ))}
+        </div>
+
+        <p className="bsr-spot-tip">Scroll the strip for the next 24 hours →</p>
+      </div>
+    </div>
+  );
 }
 
 function BuoyDetail({
@@ -207,6 +354,7 @@ export default function BikingScoutingContent({
   const [bust, setBust] = useState(() => Math.floor(Date.now() / 1000));
   const [selected, setSelected] = useState<Camera | null>(null);
   const [selectedBuoy, setSelectedBuoy] = useState<BuoyCam | null>(null);
+  const [selectedSpot, setSelectedSpot] = useState<WindSpot | null>(null);
   const [query, setQuery] = useState("");
   const tickRef = useRef<number | null>(null);
 
@@ -413,6 +561,7 @@ export default function BikingScoutingContent({
             buoys={buoys}
             onSelectCamera={setSelected}
             onSelectBuoy={setSelectedBuoy}
+            onSelectSpot={setSelectedSpot}
           />
         </section>
 
@@ -538,6 +687,12 @@ export default function BikingScoutingContent({
             buoy={selectedBuoy}
             bust={bust}
             onClose={() => setSelectedBuoy(null)}
+          />
+        )}
+        {selectedSpot && (
+          <SpotDetail
+            spot={selectedSpot}
+            onClose={() => setSelectedSpot(null)}
           />
         )}
       </main>
@@ -794,6 +949,119 @@ const styles = `
   flex-direction: column;
 }
 .bsr-modal-card--wide { max-width: min(1400px, 96vw); }
+.bsr-modal-card--spot { max-width: min(960px, 95vw); }
+
+/* ---- Spot detail modal ---- */
+.bsr-spot-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 1rem;
+}
+.bsr-spot-header > div { min-width: 0; flex: 1; }
+.bsr-spot-caveat {
+  color: rgba(250, 204, 21, 0.7);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.bsr-spot-app-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(196,181,253,0.12);
+  border: 1px solid rgba(196,181,253,0.35);
+  color: #ddd6fe;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.bsr-spot-app-btn:hover {
+  background: rgba(196,181,253,0.2);
+  border-color: rgba(196,181,253,0.6);
+  color: #fff;
+}
+
+.bsr-hours-strip {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 1.5rem 1.25rem;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.bsr-hours-strip::-webkit-scrollbar { height: 6px; }
+.bsr-hours-strip::-webkit-scrollbar-track { background: transparent; }
+.bsr-hours-strip::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 999px;
+}
+.bsr-hour-card {
+  flex: 0 0 auto;
+  width: 64px;
+  scroll-snap-align: start;
+  padding: 0.6rem 0.4rem 0.55rem;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+}
+.bsr-hour-time {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.bsr-hour-emoji { font-size: 1.4rem; line-height: 1; margin: 0.1rem 0; }
+.bsr-hour-temp {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+.bsr-hour-wind {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: rgba(255,255,255,0.75);
+  font-size: 0.78rem;
+}
+.bsr-hour-wind svg { color: #c4b5fd; }
+.bsr-hour-gust {
+  font-size: 0.68rem;
+  color: #fb923c;
+  letter-spacing: 0.02em;
+}
+.bsr-hour-precip {
+  font-size: 0.68rem;
+  color: #60a5fa;
+}
+.bsr-spot-tip {
+  margin: 0;
+  padding: 0 1.5rem 1.1rem;
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+
+@media (max-width: 600px) {
+  .bsr-spot-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .bsr-spot-app-btn { align-self: flex-start; }
+  .bsr-hour-card { width: 58px; }
+}
 .bsr-buoy-strip {
   width: 100%;
   background: #000;

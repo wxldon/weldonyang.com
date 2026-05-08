@@ -20,6 +20,17 @@ const SPOTS = [
   { id: "hawk-hill",    name: "Hawk Hill",    lat: 37.8264, lng: -122.4986 },
 ] as const;
 
+export interface SpotHour {
+  timeIso: string;
+  windMph: number;
+  gustMph: number;
+  directionDeg: number;
+  directionLabel: string;
+  tempF: number;
+  precipPct: number;
+  weatherCode: number;
+}
+
 export interface WindSpot {
   id: string;
   name: string;
@@ -32,6 +43,7 @@ export interface WindSpot {
   tempF: number | null;
   observedAt: string | null;
   source: "forecast";
+  forecast24h: SpotHour[];
 }
 
 export interface WindStation {
@@ -123,17 +135,46 @@ interface RawSpotForecast {
     wind_gusts_10m: number;
     temperature_2m: number;
   };
+  hourly: {
+    time: string[];
+    temperature_2m: number[];
+    wind_speed_10m: number[];
+    wind_direction_10m: number[];
+    wind_gusts_10m: number[];
+    weather_code: number[];
+    precipitation_probability: number[];
+  };
 }
 
 async function fetchSpot(spot: typeof SPOTS[number]): Promise<WindSpot | null> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${spot.lat}&longitude=${spot.lng}` +
     `&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m,temperature_2m` +
-    `&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=America/Los_Angeles`;
+    `&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,weather_code,precipitation_probability` +
+    `&wind_speed_unit=mph&temperature_unit=fahrenheit&timezone=America/Los_Angeles&forecast_days=2`;
   try {
     const res = await fetch(url, { next: { revalidate: 600 } });
     if (!res.ok) return null;
     const j = (await res.json()) as RawSpotForecast;
+
+    const nowMs = new Date(j.current.time + ":00").getTime();
+    const forecast24h: SpotHour[] = [];
+    for (let i = 0; i < j.hourly.time.length && forecast24h.length < 24; i++) {
+      const tMs = new Date(j.hourly.time[i] + ":00").getTime();
+      if (tMs < nowMs) continue;
+      const dir = j.hourly.wind_direction_10m[i] ?? 0;
+      forecast24h.push({
+        timeIso: j.hourly.time[i],
+        windMph: Math.round(j.hourly.wind_speed_10m[i] ?? 0),
+        gustMph: Math.round(j.hourly.wind_gusts_10m[i] ?? 0),
+        directionDeg: dir,
+        directionLabel: compassFromDeg(dir),
+        tempF: Math.round(j.hourly.temperature_2m[i] ?? 0),
+        precipPct: Math.round(j.hourly.precipitation_probability[i] ?? 0),
+        weatherCode: j.hourly.weather_code[i] ?? 0,
+      });
+    }
+
     return {
       id: spot.id,
       name: spot.name,
@@ -146,6 +187,7 @@ async function fetchSpot(spot: typeof SPOTS[number]): Promise<WindSpot | null> {
       tempF: Math.round(j.current.temperature_2m),
       observedAt: j.current.time,
       source: "forecast",
+      forecast24h,
     };
   } catch {
     return null;

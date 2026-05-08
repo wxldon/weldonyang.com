@@ -71,6 +71,7 @@ export default function ScoutingMap({
   buoys,
   onSelectCamera,
   onSelectBuoy,
+  onSelectSpot,
 }: {
   cameras: Camera[];
   winds: WindStation[];
@@ -78,6 +79,7 @@ export default function ScoutingMap({
   buoys: BuoyCam[];
   onSelectCamera: (c: Camera) => void;
   onSelectBuoy: (b: BuoyCam) => void;
+  onSelectSpot: (s: WindSpot) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
@@ -162,16 +164,12 @@ export default function ScoutingMap({
           iconSize: [44, 22],
           iconAnchor: [22, 11],
         });
-        const popup = `
-          <strong>${s.name}</strong> <span style="opacity:0.6">· spot forecast</span><br/>
-          ${s.windMph} mph${s.directionLabel ? ` from ${s.directionLabel}` : ""}${
-            s.gustMph ? ` · gusts ${s.gustMph}` : ""
-          }${s.tempF != null ? ` · ${s.tempF}°F` : ""}<br/>
-          <span style="opacity:0.55;font-size:0.7rem">Open-Meteo gridded forecast (no anemometer)</span>
-        `;
-        L.marker([s.lat, s.lng], { icon, title: s.name, zIndexOffset: 200 })
-          .bindPopup(popup)
-          .addTo(spotLayer);
+        const marker = L.marker([s.lat, s.lng], {
+          icon,
+          title: s.name,
+          zIndexOffset: 200,
+        }).addTo(spotLayer);
+        marker.on("click", () => onSelectSpot(s));
       }
 
       const allLatLngs: [number, number][] = [
@@ -192,7 +190,7 @@ export default function ScoutingMap({
       if (m && typeof m.remove === "function") m.remove();
       mapRef.current = null;
     };
-  }, [cameras, winds, spotWinds, buoys, onSelectCamera, onSelectBuoy]);
+  }, [cameras, winds, spotWinds, buoys, onSelectCamera, onSelectBuoy, onSelectSpot]);
 
   return <div ref={containerRef} className="bsr-map" />;
 }

@@ -78,7 +78,7 @@ interface RawForecast {
   };
 }
 
-function describeCode(code: number, isDay: boolean): { label: string; emoji: string } {
+export function describeCode(code: number, isDay: boolean): { label: string; emoji: string } {
   if (code === 0) return { label: "Clear", emoji: isDay ? "☀️" : "🌙" };
   if (code === 1) return { label: "Mostly clear", emoji: isDay ? "🌤️" : "🌙" };
   if (code === 2) return { label: "Partly cloudy", emoji: "⛅" };
