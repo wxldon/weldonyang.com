@@ -13,8 +13,14 @@ export const metadata: Metadata = {
 
 export default async function SpinTheWheelPage() {
   const [partitions, entries, admin] = await Promise.all([
-    getWheelPartitions().catch(() => []),
-    getMediaEntries().catch(() => []),
+    getWheelPartitions().catch((err) => {
+      console.error("[spin-the-wheel] getWheelPartitions failed:", err);
+      return [];
+    }),
+    getMediaEntries().catch((err) => {
+      console.error("[spin-the-wheel] getMediaEntries failed:", err);
+      return [];
+    }),
     isAdmin(),
   ]);
 
