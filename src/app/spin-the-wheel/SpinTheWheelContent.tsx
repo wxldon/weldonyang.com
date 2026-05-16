@@ -7,6 +7,54 @@ import type { MediaEntry } from "@/lib/media";
 
 const TAU = Math.PI * 2;
 
+/* ---------- Picking a distinct color for new slices -------------------
+ * Tailwind-500 hues, well-spaced around the wheel. When the admin adds a
+ * slice we score each palette entry by its minimum RGB distance to any
+ * existing slice's color and pick the one with the largest score, so the
+ * new slice automatically stands out against what's already on the wheel.
+ */
+const COLOR_PALETTE = [
+  "#ef4444", "#f97316", "#f59e0b", "#facc15",
+  "#84cc16", "#22c55e", "#10b981", "#14b8a6",
+  "#06b6d4", "#0ea5e9", "#3b82f6", "#6366f1",
+  "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+  "#f43f5e",
+];
+
+function hexToRgb(hex: string): [number, number, number] {
+  let h = hex.trim().replace(/^#/, "");
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  if (h.length !== 6) return [128, 128, 128];
+  const n = parseInt(h, 16);
+  if (Number.isNaN(n)) return [128, 128, 128];
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+function rgbDistSq(a: [number, number, number], b: [number, number, number]) {
+  const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+  return dr * dr + dg * dg + db * db;
+}
+
+function pickDistinctColor(existing: string[]): string {
+  if (existing.length === 0) return COLOR_PALETTE[0];
+  const usedRgb = existing.map(hexToRgb);
+  let best = COLOR_PALETTE[0];
+  let bestScore = -1;
+  for (const cand of COLOR_PALETTE) {
+    const candRgb = hexToRgb(cand);
+    let minDist = Infinity;
+    for (const ur of usedRgb) {
+      const d = rgbDistSq(candRgb, ur);
+      if (d < minDist) minDist = d;
+    }
+    if (minDist > bestScore) {
+      bestScore = minDist;
+      best = cand;
+    }
+  }
+  return best;
+}
+
 /* ---------- click sound (Web Audio) ----------------------------------- */
 function makeClicker() {
   let ctx: AudioContext | null = null;
@@ -250,9 +298,10 @@ function EditPanel({
   };
 
   const add = () => {
+    const color = pickDistinctColor(partitions.map((p) => p.color));
     setPartitions([
       ...partitions,
-      { id: -Date.now(), label: "new", color: "#8b5cf6", position: partitions.length },
+      { id: -Date.now(), label: "new", color, position: partitions.length },
     ]);
   };
 
