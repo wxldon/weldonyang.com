@@ -118,6 +118,50 @@ function Wheel({
   );
 }
 
+/* ---------- Reusable confirm dialog ----------------------------------- */
+function ConfirmDialog({
+  open,
+  message,
+  detail,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  message: string;
+  detail?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+      if (e.key === "Enter") onConfirm();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onCancel, onConfirm]);
+
+  if (!open) return null;
+  return (
+    <div className="stw-confirm" role="dialog" aria-modal="true" onClick={onCancel}>
+      <div className="stw-confirm-card" onClick={(e) => e.stopPropagation()}>
+        <p className="stw-confirm-msg">{message}</p>
+        {detail && <p className="stw-confirm-detail">{detail}</p>}
+        <div className="stw-confirm-actions">
+          <button className="stw-btn stw-btn-secondary" onClick={onCancel}>cancel</button>
+          <button className="stw-btn stw-btn-danger" onClick={onConfirm} autoFocus>delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Edit panel ------------------------------------------------- */
 function EditPanel({
   partitions,
@@ -130,14 +174,21 @@ function EditPanel({
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
 
   const update = (idx: number, patch: Partial<WheelPartition>) => {
     setPartitions(partitions.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
   };
 
-  const remove = (idx: number) => {
+  const requestRemove = (idx: number) => {
     if (partitions.length <= 2) return;
-    setPartitions(partitions.filter((_, i) => i !== idx));
+    setConfirmIdx(idx);
+  };
+
+  const confirmRemove = () => {
+    if (confirmIdx === null) return;
+    setPartitions(partitions.filter((_, i) => i !== confirmIdx));
+    setConfirmIdx(null);
   };
 
   const add = () => {
@@ -192,7 +243,7 @@ function EditPanel({
             />
             <button
               type="button"
-              onClick={() => remove(i)}
+              onClick={() => requestRemove(i)}
               disabled={partitions.length <= 2}
               className="stw-edit-rm"
               aria-label="remove"
@@ -211,6 +262,13 @@ function EditPanel({
         </button>
       </div>
       {error && <p className="stw-edit-error">{error}</p>}
+      <ConfirmDialog
+        open={confirmIdx !== null}
+        message="Delete this slice?"
+        detail={confirmIdx !== null ? partitions[confirmIdx]?.label : undefined}
+        onConfirm={confirmRemove}
+        onCancel={() => setConfirmIdx(null)}
+      />
     </div>
   );
 }
@@ -247,6 +305,7 @@ function MediaTable({
   const [drafts, setDrafts] = useState<MediaDraft[]>(() => entries.map(toDraft));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
   const tempId = useRef(-1);
 
   // Keep drafts in sync with prop when not actively editing (e.g., after save).
@@ -266,7 +325,20 @@ function MediaTable({
   const addRow = () => {
     setDrafts((d) => [...d, { id: tempId.current--, rating: "", name: "", type: "", notes: "" }]);
   };
-  const removeRow = (idx: number) => setDrafts((d) => d.filter((_, i) => i !== idx));
+  const requestRemoveRow = (idx: number) => {
+    const row = drafts[idx];
+    const isEmpty = !row || (!row.name && !row.type && !row.notes && !row.rating);
+    if (isEmpty) {
+      setDrafts((d) => d.filter((_, i) => i !== idx));
+      return;
+    }
+    setConfirmIdx(idx);
+  };
+  const confirmRemoveRow = () => {
+    if (confirmIdx === null) return;
+    setDrafts((d) => d.filter((_, i) => i !== confirmIdx));
+    setConfirmIdx(null);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -392,7 +464,7 @@ function MediaTable({
                   </td>
                   {editing && (
                     <td className="col-rm">
-                      <button onClick={() => removeRow(i)} aria-label="remove">✕</button>
+                      <button onClick={() => requestRemoveRow(i)} aria-label="remove">✕</button>
                     </td>
                   )}
                 </tr>
@@ -408,6 +480,13 @@ function MediaTable({
         </button>
       )}
       {error && <p className="stw-edit-error">{error}</p>}
+      <ConfirmDialog
+        open={confirmIdx !== null}
+        message="Delete this row?"
+        detail={confirmIdx !== null ? drafts[confirmIdx]?.name || undefined : undefined}
+        onConfirm={confirmRemoveRow}
+        onCancel={() => setConfirmIdx(null)}
+      />
     </section>
   );
 }
@@ -794,7 +873,58 @@ const styles = `
   color: #c4b5fd;
   border: 1px solid rgba(139, 92, 246, 0.5);
 }
+.stw-btn-danger {
+  background: #dc2626;
+  color: #fff;
+}
+.stw-btn-danger:hover:not(:disabled) { background: #ef4444; }
 .stw-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Confirm dialog ---- */
+.stw-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: stw-confirm-in 0.15s ease-out;
+}
+@keyframes stw-confirm-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.stw-confirm-card {
+  max-width: 380px;
+  width: 100%;
+  background: #111;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.25rem 1.25rem 1rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.stw-confirm-msg {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f5f5f7;
+}
+.stw-confirm-detail {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.55);
+  font-style: italic;
+}
+.stw-confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1.1rem;
+}
 .stw-edit-error {
   color: #f87171;
   font-size: 0.8rem;
