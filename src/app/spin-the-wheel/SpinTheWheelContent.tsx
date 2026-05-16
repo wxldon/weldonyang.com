@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { WheelPartition } from "@/lib/wheel";
+import type { MediaEntry } from "@/lib/media";
 
 const TAU = Math.PI * 2;
 
@@ -214,15 +215,215 @@ function EditPanel({
   );
 }
 
+/* ---------- Media table ----------------------------------------------- */
+type MediaDraft = {
+  id: number;            // negative for new rows
+  rating: string;        // string for free-form editing; parsed on save
+  name: string;
+  type: string;
+  notes: string;
+};
+
+function toDraft(e: MediaEntry): MediaDraft {
+  return {
+    id: e.id,
+    rating: e.rating == null ? "" : String(e.rating),
+    name: e.name,
+    type: e.type ?? "",
+    notes: e.notes ?? "",
+  };
+}
+
+function MediaTable({
+  entries,
+  isAdmin,
+  onSaved,
+}: {
+  entries: MediaEntry[];
+  isAdmin: boolean;
+  onSaved: (e: MediaEntry[]) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [drafts, setDrafts] = useState<MediaDraft[]>(() => entries.map(toDraft));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tempId = useRef(-1);
+
+  // Keep drafts in sync with prop when not actively editing (e.g., after save).
+  useEffect(() => {
+    if (!editing) setDrafts(entries.map(toDraft));
+  }, [entries, editing]);
+
+  const startEdit = () => setEditing(true);
+  const cancelEdit = () => {
+    setDrafts(entries.map(toDraft));
+    setEditing(false);
+    setError(null);
+  };
+  const update = (idx: number, patch: Partial<MediaDraft>) => {
+    setDrafts((d) => d.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
+  };
+  const addRow = () => {
+    setDrafts((d) => [...d, { id: tempId.current--, rating: "", name: "", type: "", notes: "" }]);
+  };
+  const removeRow = (idx: number) => setDrafts((d) => d.filter((_, i) => i !== idx));
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = drafts
+        .filter((d) => d.name.trim() !== "")
+        .map((d) => ({
+          rating: d.rating.trim() === "" ? null : parseFloat(d.rating),
+          name: d.name.trim(),
+          type: d.type.trim() === "" ? null : d.type.trim(),
+          notes: d.notes.trim() === "" ? null : d.notes.trim(),
+        }));
+      const res = await fetch("/api/admin/media", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries: payload }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "save failed");
+        return;
+      }
+      onSaved(json.entries);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const rows = editing ? drafts : entries.map(toDraft);
+
+  return (
+    <section className="stw-media">
+      <div className="stw-media-header">
+        <h2>watch list</h2>
+        {isAdmin && !editing && (
+          <button className="stw-btn stw-btn-secondary" onClick={startEdit}>
+            edit
+          </button>
+        )}
+        {isAdmin && editing && (
+          <div className="stw-media-actions">
+            <button className="stw-btn stw-btn-secondary" onClick={cancelEdit} disabled={saving}>
+              cancel
+            </button>
+            <button className="stw-btn stw-btn-primary" onClick={save} disabled={saving}>
+              {saving ? "saving…" : "save"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {rows.length === 0 && !editing ? (
+        <p className="stw-media-empty">nothing here yet.</p>
+      ) : (
+        <div className="stw-media-table-wrap">
+          <table className="stw-media-table">
+            <thead>
+              <tr>
+                <th className="col-rating">rating</th>
+                <th className="col-name">name</th>
+                <th className="col-type">type</th>
+                <th className="col-notes">notes</th>
+                {editing && <th className="col-rm" aria-label="remove" />}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={row.id}>
+                  <td className="col-rating">
+                    {editing ? (
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={row.rating}
+                        onChange={(e) => update(i, { rating: e.target.value })}
+                        placeholder="—"
+                      />
+                    ) : row.rating === "" ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      row.rating
+                    )}
+                  </td>
+                  <td className="col-name">
+                    {editing ? (
+                      <input
+                        type="text"
+                        value={row.name}
+                        onChange={(e) => update(i, { name: e.target.value })}
+                      />
+                    ) : (
+                      row.name
+                    )}
+                  </td>
+                  <td className="col-type">
+                    {editing ? (
+                      <input
+                        type="text"
+                        value={row.type}
+                        onChange={(e) => update(i, { type: e.target.value })}
+                        placeholder="movie / show / …"
+                      />
+                    ) : row.type === "" ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      row.type
+                    )}
+                  </td>
+                  <td className="col-notes">
+                    {editing ? (
+                      <input
+                        type="text"
+                        value={row.notes}
+                        onChange={(e) => update(i, { notes: e.target.value })}
+                      />
+                    ) : row.notes === "" ? (
+                      <span className="muted">—</span>
+                    ) : (
+                      row.notes
+                    )}
+                  </td>
+                  {editing && (
+                    <td className="col-rm">
+                      <button onClick={() => removeRow(i)} aria-label="remove">✕</button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {isAdmin && editing && (
+        <button className="stw-btn stw-btn-secondary stw-media-addbtn" onClick={addRow}>
+          + add row
+        </button>
+      )}
+      {error && <p className="stw-edit-error">{error}</p>}
+    </section>
+  );
+}
+
 /* ---------- Main content ---------------------------------------------- */
 export default function SpinTheWheelContent({
   initialPartitions,
+  initialMedia,
   isAdmin,
 }: {
   initialPartitions: WheelPartition[];
+  initialMedia: MediaEntry[];
   isAdmin: boolean;
 }) {
   const [partitions, setPartitions] = useState(initialPartitions);
+  const [media, setMedia] = useState(initialMedia);
   const [angle, setAngle] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<WheelPartition | null>(null);
@@ -381,6 +582,12 @@ export default function SpinTheWheelContent({
           onSaved={(saved) => setPartitions(saved)}
         />
       )}
+
+      <MediaTable
+        entries={media}
+        isAdmin={isAdmin}
+        onSaved={(saved) => setMedia(saved)}
+      />
     </main>
   );
 }
@@ -593,4 +800,89 @@ const styles = `
   font-size: 0.8rem;
   margin: 0.6rem 0 0;
 }
+
+/* ---- Media table ---- */
+.stw-media {
+  max-width: 920px;
+  margin: 3rem auto 0;
+}
+.stw-media-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.85rem;
+  gap: 0.5rem;
+}
+.stw-media-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+}
+.stw-media-actions { display: flex; gap: 0.5rem; }
+.stw-media-empty {
+  text-align: center;
+  color: rgba(255,255,255,0.35);
+  padding: 2rem 0;
+  font-size: 0.9rem;
+}
+.stw-media-table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+}
+.stw-media-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.stw-media-table th {
+  text-align: left;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.45);
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.02);
+}
+.stw-media-table td {
+  padding: 0.55rem 0.85rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: #f5f5f7;
+  vertical-align: middle;
+}
+.stw-media-table tr:last-child td { border-bottom: none; }
+.stw-media-table .muted { color: rgba(255,255,255,0.3); }
+.stw-media-table .col-rating { width: 78px; font-variant-numeric: tabular-nums; }
+.stw-media-table .col-name   { font-weight: 500; }
+.stw-media-table .col-type   { width: 110px; color: rgba(255,255,255,0.7); }
+.stw-media-table .col-notes  { color: rgba(255,255,255,0.7); }
+.stw-media-table .col-rm     { width: 36px; text-align: right; }
+.stw-media-table input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: inherit;
+  border-radius: 5px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.stw-media-table .col-rm button {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.55);
+  border-radius: 5px;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.stw-media-table .col-rm button:hover { color: #f87171; border-color: #f87171; }
+.stw-media-addbtn { margin-top: 0.75rem; }
 `;
