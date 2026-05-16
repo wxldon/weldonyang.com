@@ -2,7 +2,9 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
 export const ADMIN_COOKIE = "admin_session";
-const COOKIE_MAX_AGE_S = 60 * 60 * 24 * 30;
+// One year. Single-admin personal site and the bookmark-URL sign-in is
+// one click anyway, so a short cookie just adds friction.
+const COOKIE_MAX_AGE_S = 60 * 60 * 24 * 365;
 
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
