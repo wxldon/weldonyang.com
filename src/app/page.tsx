@@ -21,6 +21,7 @@ const FALLBACK_LINKS: { href: string; label: string }[] = [
   { href: "/how-far-have-i-gone",   label: "how far have I gone" },
   { href: "/my-coach",              label: "my coach" },
   { href: "/biking-scouting-report", label: "biking scouting report" },
+  { href: "/spin-the-wheel",        label: "spin the wheel" },
   { href: "https://github.com/wxldon", label: "github" },
 ];
 
