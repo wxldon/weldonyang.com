@@ -118,6 +118,63 @@ function Wheel({
   );
 }
 
+/* ---------- Drag-to-reorder hook --------------------------------------
+ * Native HTML5 DnD. Drop ON row X means "land at X's current visual
+ * slot." Adjusts for the splice shift when dragging downward so the
+ * visual semantics stay intuitive. Drag is only initiated from a
+ * handle element (getHandleProps); the surrounding row accepts drops
+ * (getRowProps) — that way clicking into inputs doesn't start a drag.
+ */
+function reorder<T>(items: T[], from: number, to: number): T[] {
+  if (from === to) return items;
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  const adjusted = to > from ? to - 1 : to;
+  next.splice(adjusted, 0, moved);
+  return next;
+}
+
+function useDragReorder<T>(items: T[], setItems: (next: T[]) => void) {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  const finish = () => {
+    setDragIdx(null);
+    setOverIdx(null);
+  };
+
+  return {
+    dragIdx,
+    overIdx,
+    getHandleProps: (idx: number) => ({
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        setDragIdx(idx);
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", String(idx));
+      },
+      onDragEnd: finish,
+    }),
+    getRowProps: (idx: number) => ({
+      onDragOver: (e: React.DragEvent) => {
+        if (dragIdx === null) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (overIdx !== idx) setOverIdx(idx);
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        if (dragIdx === null || dragIdx === idx) {
+          finish();
+          return;
+        }
+        setItems(reorder(items, dragIdx, idx));
+        finish();
+      },
+    }),
+  };
+}
+
 /* ---------- Reusable confirm dialog ----------------------------------- */
 function ConfirmDialog({
   open,
@@ -175,6 +232,7 @@ function EditPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
+  const dnd = useDragReorder(partitions, setPartitions);
 
   const update = (idx: number, patch: Partial<WheelPartition>) => {
     setPartitions(partitions.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
@@ -227,31 +285,47 @@ function EditPanel({
         <span className="stw-edit-count">{partitions.length} slices</span>
       </div>
       <div className="stw-edit-rows">
-        {partitions.map((p, i) => (
-          <div key={p.id} className="stw-edit-row">
-            <input
-              type="color"
-              value={p.color}
-              onChange={(e) => update(i, { color: e.target.value })}
-              aria-label="color"
-            />
-            <input
-              type="text"
-              value={p.label}
-              onChange={(e) => update(i, { label: e.target.value })}
-              placeholder="label"
-            />
-            <button
-              type="button"
-              onClick={() => requestRemove(i)}
-              disabled={partitions.length <= 2}
-              className="stw-edit-rm"
-              aria-label="remove"
+        {partitions.map((p, i) => {
+          const isDragging = dnd.dragIdx === i;
+          const isOver = dnd.overIdx === i && dnd.dragIdx !== null && dnd.dragIdx !== i;
+          return (
+            <div
+              key={p.id}
+              className={`stw-edit-row ${isDragging ? "is-dragging" : ""} ${isOver ? "is-over" : ""}`}
+              {...dnd.getRowProps(i)}
             >
-              ✕
-            </button>
-          </div>
-        ))}
+              <span
+                {...dnd.getHandleProps(i)}
+                className="stw-drag-handle"
+                aria-label="drag to reorder"
+                title="drag to reorder"
+              >
+                ⠿
+              </span>
+              <input
+                type="color"
+                value={p.color}
+                onChange={(e) => update(i, { color: e.target.value })}
+                aria-label="color"
+              />
+              <input
+                type="text"
+                value={p.label}
+                onChange={(e) => update(i, { label: e.target.value })}
+                placeholder="label"
+              />
+              <button
+                type="button"
+                onClick={() => requestRemove(i)}
+                disabled={partitions.length <= 2}
+                className="stw-edit-rm"
+                aria-label="remove"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
       </div>
       <div className="stw-edit-actions">
         <button type="button" onClick={add} className="stw-btn stw-btn-secondary">
@@ -307,6 +381,7 @@ function MediaTable({
   const [error, setError] = useState<string | null>(null);
   const [confirmIdx, setConfirmIdx] = useState<number | null>(null);
   const tempId = useRef(-1);
+  const dnd = useDragReorder(drafts, setDrafts);
 
   // Keep drafts in sync with prop when not actively editing (e.g., after save).
   useEffect(() => {
@@ -399,6 +474,7 @@ function MediaTable({
           <table className="stw-media-table">
             <thead>
               <tr>
+                {editing && <th className="col-drag" aria-label="drag" />}
                 <th className="col-rating">rating</th>
                 <th className="col-name">name</th>
                 <th className="col-type">type</th>
@@ -407,8 +483,29 @@ function MediaTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, i) => (
-                <tr key={row.id}>
+              {rows.map((row, i) => {
+                const isDragging = editing && dnd.dragIdx === i;
+                const isOver =
+                  editing && dnd.overIdx === i && dnd.dragIdx !== null && dnd.dragIdx !== i;
+                const rowProps = editing ? dnd.getRowProps(i) : {};
+                return (
+                <tr
+                  key={row.id}
+                  className={`${isDragging ? "is-dragging" : ""} ${isOver ? "is-over" : ""}`}
+                  {...rowProps}
+                >
+                  {editing && (
+                    <td className="col-drag">
+                      <span
+                        {...dnd.getHandleProps(i)}
+                        className="stw-drag-handle"
+                        aria-label="drag to reorder"
+                        title="drag to reorder"
+                      >
+                        ⠿
+                      </span>
+                    </td>
+                  )}
                   <td className="col-rating">
                     {editing ? (
                       <input
@@ -468,7 +565,8 @@ function MediaTable({
                     </td>
                   )}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -819,6 +917,20 @@ const styles = `
   gap: 0.5rem;
   align-items: center;
 }
+.stw-edit-row.is-dragging { opacity: 0.4; }
+.stw-edit-row.is-over { box-shadow: inset 0 2px 0 0 #8b5cf6; }
+.stw-drag-handle {
+  flex: 0 0 18px;
+  width: 18px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 1rem;
+  cursor: grab;
+  user-select: none;
+  line-height: 1;
+}
+.stw-drag-handle:active { cursor: grabbing; }
+.stw-drag-handle:hover { color: rgba(255, 255, 255, 0.75); }
 .stw-edit-row input[type="color"] {
   flex: 0 0 36px;
   width: 36px;
@@ -993,6 +1105,9 @@ const styles = `
 .stw-media-table .col-type   { width: 110px; color: rgba(255,255,255,0.7); }
 .stw-media-table .col-notes  { color: rgba(255,255,255,0.7); }
 .stw-media-table .col-rm     { width: 36px; text-align: right; }
+.stw-media-table .col-drag   { width: 24px; padding: 0 0.35rem; }
+.stw-media-table tr.is-dragging { opacity: 0.4; }
+.stw-media-table tr.is-over td { box-shadow: inset 0 2px 0 0 #8b5cf6; }
 .stw-media-table input {
   width: 100%;
   background: rgba(255,255,255,0.05);
