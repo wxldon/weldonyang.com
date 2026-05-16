@@ -93,3 +93,25 @@ create table if not exists workout_recommendations (
   created_at            timestamptz not null default now()
 );
 create index if not exists workout_recs_completed_idx on workout_recommendations (completed_activity_id);
+
+-- /spin-the-wheel
+create table if not exists wheel_partitions (
+  id         serial primary key,
+  label      text   not null,
+  color      text   not null,
+  position   int    not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists wheel_partitions_position_idx on wheel_partitions (position);
+
+create table if not exists media_entries (
+  id         serial primary key,
+  rating     numeric(3,1),
+  name       text not null,
+  type       text,
+  notes      text,
+  position   int  not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists media_entries_position_idx on media_entries (position);
